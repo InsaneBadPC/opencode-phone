@@ -11,5 +11,6 @@ data class WorkspaceFileEntity(
     val language: String, // "kotlin", "python", "json", "markdown", "sql"
     val updatedAt: Long = System.currentTimeMillis(),
     val isDirectory: Boolean = false,
-    val gitStatus: String = "unmodified" // "modified", "new", "unmodified"
+    val gitStatus: String = "unmodified", // "modified", "new", "unmodified"
+    val projectId: String = "proj_opencode"
 )

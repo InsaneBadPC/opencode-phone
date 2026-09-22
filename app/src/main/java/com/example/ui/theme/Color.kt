@@ -5,6 +5,7 @@ import androidx.compose.ui.graphics.Color
 // OpenCode Modern Cyber / Slate Palette
 val Slate950 = Color(0xFF0B0F19)
 val Slate900 = Color(0xFF0F172A)
+val Slate850 = Color(0xFF151E2E)
 val Slate800 = Color(0xFF1E293B)
 val Slate700 = Color(0xFF334155)
 val Slate600 = Color(0xFF475569)
@@ -17,12 +18,14 @@ val Slate100 = Color(0xFFF1F5F9)
 // Accent Colors
 val CyanAccent = Color(0xFF06B6D4)
 val CyanBright = Color(0xFF38BDF8)
+val CyanDark = Color(0xFF0E7490)
 val EmeraldSuccess = Color(0xFF10B981)
 val EmeraldBright = Color(0xFF34D399)
 val AmberWarning = Color(0xFFF59E0B)
 val AmberBright = Color(0xFFFBBF24)
 val RoseError = Color(0xFFF43F5E)
 val CrimsonError = RoseError
+val ErrorRed = RoseError
 val EmeraldDark = Color(0xFF047857)
 val VioletPurple = Color(0xFF8B5CF6)
 val PurpleAccent = VioletPurple

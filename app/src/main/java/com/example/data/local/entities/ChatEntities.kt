@@ -9,7 +9,8 @@ data class ChatSessionEntity(
     val title: String,
     val createdAt: Long = System.currentTimeMillis(),
     val modelName: String = "Zen Coder (gemini-3.1-pro-preview)",
-    val activeSkillIds: String = "" // comma separated
+    val activeSkillIds: String = "", // comma separated
+    val projectId: String = "proj_opencode"
 )
 
 @Entity(tableName = "chat_messages")

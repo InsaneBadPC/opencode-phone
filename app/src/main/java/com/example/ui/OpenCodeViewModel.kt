@@ -59,6 +59,21 @@ class OpenCodeViewModel(application: Application) : AndroidViewModel(application
     private val _currentSessionId = MutableStateFlow<String?>(null)
     val currentSessionId: StateFlow<String?> = _currentSessionId.asStateFlow()
 
+    // Projects & Working Directories
+    val allProjects = repository.allProjects.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    private val _currentProjectId = MutableStateFlow<String>("proj_opencode")
+    val currentProjectId: StateFlow<String> = _currentProjectId.asStateFlow()
+
+    val activeProject: StateFlow<ProjectEntity?> = combine(allProjects, _currentProjectId) { projList, activeId ->
+        projList.find { it.id == activeId } ?: projList.firstOrNull()
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    val currentProjectSessions: StateFlow<List<ChatSessionEntity>> = combine(sessions, _currentProjectId) { allSess, projId ->
+        val filtered = allSess.filter { it.projectId == projId }
+        if (filtered.isNotEmpty()) filtered else allSess
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     val secureKeyStorage by lazy {
         SecureKeyStorage(getApplication<Application>().applicationContext)
     }
@@ -206,17 +221,138 @@ class OpenCodeViewModel(application: Application) : AndroidViewModel(application
         _currentSessionId.value = sessionId
     }
 
-    fun createNewSession() {
+    fun selectProject(projectId: String) {
+        _currentProjectId.value = projectId
+        viewModelScope.launch {
+            // Pick the first session belonging to this project if available
+            val projSessions = repository.chatDao.getSessionsForProject(projectId).first()
+            if (projSessions.isNotEmpty()) {
+                _currentSessionId.value = projSessions.first().id
+            }
+            // Also select first file of this project if any
+            val projFiles = repository.workspaceDao.getFilesForProject(projectId).first()
+            if (projFiles.isNotEmpty()) {
+                openFile(projFiles.first())
+            }
+        }
+    }
+
+    fun createProject(
+        name: String,
+        workingDirectory: String,
+        language: String,
+        description: String,
+        gitBranch: String = "main"
+    ) {
+        viewModelScope.launch {
+            val projId = "proj_" + UUID.randomUUID().toString().take(8)
+            val cleanWorkDir = if (workingDirectory.startsWith("/")) workingDirectory else "/workspace/$workingDirectory"
+            val newProject = ProjectEntity(
+                id = projId,
+                name = name.trim(),
+                workingDirectory = cleanWorkDir.trim(),
+                language = language.trim(),
+                description = description.trim(),
+                gitBranch = gitBranch.trim(),
+                isDefault = false
+            )
+            repository.projectDao.insertProject(newProject)
+
+            // Seed starter files inside this project's dedicated working folder
+            val starterFiles = listOf(
+                WorkspaceFileEntity(
+                    path = "README.md",
+                    name = "README.md",
+                    content = "# ${newProject.name}\n\n📂 **Pracovní složka**: `${newProject.workingDirectory}`\n💻 **Jazyk**: ${newProject.language}\n🌿 **Větev**: ${newProject.gitBranch}\n\n${newProject.description}",
+                    language = "markdown",
+                    gitStatus = "new",
+                    projectId = projId
+                ),
+                WorkspaceFileEntity(
+                    path = if (language.contains("Kotlin", ignoreCase = true)) "src/Main.kt"
+                           else if (language.contains("Python", ignoreCase = true)) "main.py"
+                           else if (language.contains("Type", ignoreCase = true) || language.contains("React", ignoreCase = true) || language.contains("Node", ignoreCase = true)) "src/index.ts"
+                           else "main.txt",
+                    name = if (language.contains("Kotlin", ignoreCase = true)) "Main.kt"
+                           else if (language.contains("Python", ignoreCase = true)) "main.py"
+                           else if (language.contains("Type", ignoreCase = true) || language.contains("React", ignoreCase = true) || language.contains("Node", ignoreCase = true)) "index.ts"
+                           else "main.txt",
+                    content = if (language.contains("Kotlin", ignoreCase = true)) "package ${newProject.name.lowercase().replace(" ", "")}\n\nfun main() {\n    println(\"Projekt ${newProject.name} spuštěn!\")\n}"
+                           else if (language.contains("Python", ignoreCase = true)) "def main():\n    print(\"Projekt ${newProject.name} spuštěn!\")\n\nif __name__ == '__main__':\n    main()"
+                           else "console.log('Projekt ${newProject.name} spuštěn!');",
+                    language = if (language.contains("Kotlin", ignoreCase = true)) "kotlin"
+                               else if (language.contains("Python", ignoreCase = true)) "python"
+                               else "typescript",
+                    gitStatus = "new",
+                    projectId = projId
+                )
+            )
+            repository.workspaceDao.insertFiles(starterFiles)
+
+            // Create initial session for this project
+            val newSessionId = UUID.randomUUID().toString()
+            repository.chatDao.insertSession(
+                ChatSessionEntity(
+                    id = newSessionId,
+                    title = "Vývoj ${newProject.name}",
+                    modelName = _selectedAiModel.value.displayName,
+                    projectId = projId
+                )
+            )
+
+            // Switch to new project
+            selectProject(projId)
+            _currentSessionId.value = newSessionId
+        }
+    }
+
+    fun updateProject(project: ProjectEntity) {
+        viewModelScope.launch {
+            repository.projectDao.updateProject(project)
+        }
+    }
+
+    fun deleteProject(project: ProjectEntity) {
+        viewModelScope.launch {
+            repository.workspaceDao.deleteFilesForProject(project.id)
+            repository.chatDao.deleteSessionsForProject(project.id)
+            repository.projectDao.deleteProject(project)
+            if (_currentProjectId.value == project.id) {
+                val remaining = repository.projectDao.getAllProjects().first()
+                if (remaining.isNotEmpty()) {
+                    selectProject(remaining.first().id)
+                }
+            }
+        }
+    }
+
+    fun renameSession(sessionId: String, newTitle: String) {
+        viewModelScope.launch {
+            val session = repository.chatDao.getSessionById(sessionId)
+            if (session != null) {
+                repository.chatDao.updateSession(session.copy(title = newTitle.trim()))
+            }
+        }
+    }
+
+    fun createSessionForProject(projectId: String, customTitle: String? = null) {
         viewModelScope.launch {
             val id = UUID.randomUUID().toString()
+            val targetProj = repository.projectDao.getProjectById(projectId)
+            val title = customTitle?.takeIf { it.isNotBlank() } ?: "Nová relace (${targetProj?.name ?: "Projekt"})"
             val newSession = ChatSessionEntity(
                 id = id,
-                title = "New OpenCode Session",
-                modelName = _selectedAiModel.value.displayName
+                title = title,
+                modelName = _selectedAiModel.value.displayName,
+                projectId = projectId
             )
             repository.chatDao.insertSession(newSession)
             _currentSessionId.value = id
         }
+    }
+
+    fun createNewSession() {
+        createSessionForProject(_currentProjectId.value)
     }
 
     fun deleteSession(session: ChatSessionEntity) {
@@ -319,6 +455,11 @@ class OpenCodeViewModel(application: Application) : AndroidViewModel(application
     // Files state
     val workspaceFiles = repository.allFiles.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val activeProjectFiles: StateFlow<List<WorkspaceFileEntity>> = combine(workspaceFiles, _currentProjectId) { files, projId ->
+        val filtered = files.filter { it.projectId == projId }
+        if (filtered.isNotEmpty()) filtered else files
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     private val _openedFile = MutableStateFlow<WorkspaceFileEntity?>(null)
     val openedFile: StateFlow<WorkspaceFileEntity?> = _openedFile.asStateFlow()
 
@@ -380,7 +521,8 @@ class OpenCodeViewModel(application: Application) : AndroidViewModel(application
                 name = name,
                 content = content,
                 language = lang,
-                gitStatus = "new"
+                gitStatus = "new",
+                projectId = _currentProjectId.value
             )
             repository.workspaceDao.insertFile(newFile)
             openFile(newFile)
@@ -1952,10 +2094,43 @@ suspend fun fetchData(url: String): String {
     }
 
     // =========================================================================
-    // 23. CLOUD SERVICES INTEGRATIONS HUB (Google Disk, Supabase, Firefly, NotebookLM, atd.)
+    // 23. CLOUD SERVICES INTEGRATIONS HUB (22 Rozšířených cloudových konektorů)
     // =========================================================================
     val cloudServices = MutableStateFlow<List<CloudServiceIntegration>>(
         listOf(
+            // Git & Repozitáře
+            CloudServiceIntegration(
+                id = "cs-github",
+                name = "GitHub Enterprise & Cloud",
+                serviceCategory = "Git & Repozitáře",
+                iconName = "code",
+                description = "Správa repozitářů, spouštění GitHub Actions workflows, revize Pull Requestů a synchronizace issues.",
+                isConnected = true,
+                connectedAccountOrProject = "github.com/opencode-ide (SSH klíč aktivní)",
+                availableActions = listOf("Sync repozitáře", "Zobrazit Pull Requesty", "Spustit Action")
+            ),
+            CloudServiceIntegration(
+                id = "cs-gitlab",
+                name = "GitLab Connector",
+                serviceCategory = "Git & Repozitáře",
+                iconName = "terminal",
+                description = "GitLab CI/CD pipelines, správa merge requestů, runners a privátní registry kontejnerů.",
+                isConnected = true,
+                connectedAccountOrProject = "gitlab.com/opencode-core (OAuth)",
+                availableActions = listOf("Zkontrolovat CI", "Vytvořit MR", "Zobrazit pipelines")
+            ),
+            CloudServiceIntegration(
+                id = "cs-bitbucket",
+                name = "Bitbucket Cloud",
+                serviceCategory = "Git & Repozitáře",
+                iconName = "storage",
+                description = "Atlassian Git repozitáře, provázání s Jira tickety a Bitbucket automatizované Pipelines.",
+                isConnected = false,
+                connectedAccountOrProject = "Nepřipojeno",
+                availableActions = listOf("Připojit workspace", "Pipelines", "Audit log")
+            ),
+
+            // Úložiště & Záloha
             CloudServiceIntegration(
                 id = "cs-gdrive",
                 name = "Google Disk (Drive)",
@@ -1963,9 +2138,147 @@ suspend fun fetchData(url: String): String {
                 iconName = "cloud",
                 description = "Obousměrná synchronizace složek projektu, automatické zálohy a sdílení velkých datasetů.",
                 isConnected = true,
-                connectedAccountOrProject = "insanebad2@gmail.com",
+                connectedAccountOrProject = "p.p.lukes892@gmail.com",
                 availableActions = listOf("Zálohovat na Disk", "Stáhnout složku", "Sdílet odkaz")
             ),
+            CloudServiceIntegration(
+                id = "cs-aws-s3",
+                name = "AWS S3 & CloudFront",
+                serviceCategory = "Úložiště & Záloha",
+                iconName = "cloud_upload",
+                description = "Amazon Web Services S3 buckety pro distribuovaná data, statický webhosting a CDN distribuci.",
+                isConnected = true,
+                connectedAccountOrProject = "s3://opencode-cloud-assets-eu",
+                availableActions = listOf("Procházet S3 bucket", "Nahrát snapshot", "Invalidační CDN")
+            ),
+            CloudServiceIntegration(
+                id = "cs-cloudflare",
+                name = "Cloudflare Workers & R2",
+                serviceCategory = "Úložiště & Záloha",
+                iconName = "public",
+                description = "Globální edge storage R2 s nulovými poplatky za egress a serverless spouštění Workers skriptů.",
+                isConnected = true,
+                connectedAccountOrProject = "opencode-r2-prod (Token aktivní)",
+                availableActions = listOf("Deploy Worker", "Správa R2 úložiště", "Vyčistit Cache")
+            ),
+
+            // Databáze & Vektory
+            CloudServiceIntegration(
+                id = "cs-supabase",
+                name = "Supabase Database & Auth",
+                serviceCategory = "Databáze & Vektory",
+                iconName = "storage",
+                description = "PostgreSQL cloudová databáze s Edge Functions, Vector pgvector a realtime WebSocket synchronizací.",
+                isConnected = true,
+                connectedAccountOrProject = "opencode-production-db.supabase.co",
+                availableActions = listOf("Spustit Edge funkci", "Procházet tabulky", "Zobrazit schéma")
+            ),
+            CloudServiceIntegration(
+                id = "cs-neon",
+                name = "Neon Serverless Postgres",
+                serviceCategory = "Databáze & Vektory",
+                iconName = "layers",
+                description = "Serverless PostgreSQL s okamžitým větvením (branching) pro každou vývojovou větev projektu.",
+                isConnected = true,
+                connectedAccountOrProject = "ep-summer-branch-482.eu-central-1.neon.tech",
+                availableActions = listOf("Vytvořit DB branch", "SQL Editor", "Metriky zátěže")
+            ),
+            CloudServiceIntegration(
+                id = "cs-pinecone",
+                name = "Pinecone Vector Database",
+                serviceCategory = "Databáze & Vektory",
+                iconName = "grain",
+                description = "Optimalizovaná vektorová databáze pro sémantické vyhledávání v repozitáři kódu a RAG agenty.",
+                isConnected = true,
+                connectedAccountOrProject = "index: opencode-embeddings-1536",
+                availableActions = listOf("Vektorový index", "Query podobnosti", "Re-indexace")
+            ),
+            CloudServiceIntegration(
+                id = "cs-redis",
+                name = "Redis Cloud & Upstash",
+                serviceCategory = "Databáze & Vektory",
+                iconName = "bolt",
+                description = "Serverless Redis pro ultrarychlou cache, distribuované zámky a pub/sub notifikační kanály.",
+                isConnected = true,
+                connectedAccountOrProject = "upstash-redis-prod-fra",
+                availableActions = listOf("Klíče & TTL", "Flush cache", "Pub/Sub monitor")
+            ),
+
+            // Cloud & DevOps
+            CloudServiceIntegration(
+                id = "cs-gcp",
+                name = "Google Cloud Platform (GCP)",
+                serviceCategory = "Cloud & DevOps",
+                iconName = "cloud_queue",
+                description = "Nasazení backendových služeb na Cloud Run, Cloud Storage buckety a BigQuery analytika.",
+                isConnected = true,
+                connectedAccountOrProject = "gcp-opencode-prod-42",
+                availableActions = listOf("Deploy na Cloud Run", "Bucket Storage", "Spustit Cloud Build")
+            ),
+            CloudServiceIntegration(
+                id = "cs-oracle",
+                name = "Oracle Cloud (OCI)",
+                serviceCategory = "Cloud & DevOps",
+                iconName = "computer",
+                description = "Always Free výpočetní instance Ampere ARM A1 (4 OCPU, 24 GB RAM) pro těžké kompilace a Docker kontejnery.",
+                isConnected = true,
+                connectedAccountOrProject = "OCI Frankfurt - VM.Standard.A1.Flex",
+                availableActions = listOf("Připojit přes SSH", "Spustit vzdálený skript", "Restartovat VM")
+            ),
+            CloudServiceIntegration(
+                id = "cs-docker",
+                name = "Docker Hub & Registry",
+                serviceCategory = "Cloud & DevOps",
+                iconName = "developer_board",
+                description = "Privátní i veřejný registr kontejnerových obrazů, automatické spouštění buildů a vulnerability sken.",
+                isConnected = true,
+                connectedAccountOrProject = "registry.hub.docker.com/opencode",
+                availableActions = listOf("Zobrazit tagy", "Push image", "Sken zranitelností")
+            ),
+            CloudServiceIntegration(
+                id = "cs-azure",
+                name = "Microsoft Azure Cloud",
+                serviceCategory = "Cloud & DevOps",
+                iconName = "dns",
+                description = "Azure Container Apps, Azure Blob Storage a napojení na firemní Azure AD autorizaci.",
+                isConnected = false,
+                connectedAccountOrProject = "Nepřipojeno",
+                availableActions = listOf("Připojit subscription", "Container App", "Blob Storage")
+            ),
+
+            // AI & Výzkum
+            CloudServiceIntegration(
+                id = "cs-firefly",
+                name = "Adobe Firefly",
+                serviceCategory = "AI & Výzkum",
+                iconName = "palette",
+                description = "Generování vektorových ikon, textur uživatelského rozhraní a designových podkladů.",
+                isConnected = true,
+                connectedAccountOrProject = "Firefly Creative Cloud API v2",
+                availableActions = listOf("Generovat ikonu", "Vytvořit texturu pozadí", "Rozšířit obrázek")
+            ),
+            CloudServiceIntegration(
+                id = "cs-notebooklm",
+                name = "NotebookLM (Google)",
+                serviceCategory = "AI & Výzkum",
+                iconName = "menu_book",
+                description = "Propojení s výzkumnými zápisníky, syntéza technické dokumentace a automatické odpovídání na dotazy z repozitářů.",
+                isConnected = true,
+                connectedAccountOrProject = "Zápisník: Architektura OpenCode 2026",
+                availableActions = listOf("Dotaz na podklady", "Přidat soubor do zdrojů", "Generovat audio přehled")
+            ),
+            CloudServiceIntegration(
+                id = "cs-huggingface",
+                name = "Hugging Face Hub",
+                serviceCategory = "AI & Výzkum",
+                iconName = "auto_awesome",
+                description = "Katalog otevřených modelů (LLM, vision, embeddings), stahování vah a serverless Inference API.",
+                isConnected = true,
+                connectedAccountOrProject = "hf.co/models (Read/Write Token)",
+                availableActions = listOf("Hledat modely", "Inference API", "Stáhnout dataset")
+            ),
+
+            // Dokumenty & Data
             CloudServiceIntegration(
                 id = "cs-gworkspace",
                 name = "Google Workspace (Docs & Sheets)",
@@ -1977,54 +2290,46 @@ suspend fun fetchData(url: String): String {
                 availableActions = listOf("Importovat Tabulku", "Importovat Dokument", "Exportovat do Sheets")
             ),
             CloudServiceIntegration(
-                id = "cs-supabase",
-                name = "Supabase",
-                serviceCategory = "Databáze & Auth",
-                iconName = "storage",
-                description = "PostgreSQL cloudová databáze s Edge Functions, Vector pgvector a realtime synchronizací.",
-                isConnected = true,
-                connectedAccountOrProject = "opencode-production-db.supabase.co",
-                availableActions = listOf("Spustit Edge funkci", "Procházet tabulky", "Zobrazit schéma")
-            ),
-            CloudServiceIntegration(
-                id = "cs-firefly",
-                name = "Adobe Firefly",
-                serviceCategory = "AI Grafika & Design",
-                iconName = "palette",
-                description = "Generování vektorových ikon, textur uživatelského rozhraní a designových podkladů.",
-                isConnected = true,
-                connectedAccountOrProject = "Firefly Creative Cloud API v2",
-                availableActions = listOf("Generovat ikonu", "Vytvořit texturu pozadí", "Rozšířit obrázek")
-            ),
-            CloudServiceIntegration(
-                id = "cs-notebooklm",
-                name = "NotebookLM (Google)",
-                serviceCategory = "AI Výzkum & Podklady",
+                id = "cs-notion",
+                name = "Notion Workspace API",
+                serviceCategory = "Dokumenty & Data",
                 iconName = "menu_book",
-                description = "Propojení s výzkumnými zápisníky, syntéza technické dokumentace a automatické odpovídání na dotazy z repozitářů.",
+                description = "Synchronizace architektonických specifikací, tasků a interní firemní dokumentace s Notion databázemi.",
                 isConnected = true,
-                connectedAccountOrProject = "Zápisník: Architektura OpenCode 2026",
-                availableActions = listOf("Dotaz na podklady", "Přidat soubor do zdrojů", "Generovat audio přehled")
+                connectedAccountOrProject = "Notion Workspace: OpenCode Core",
+                availableActions = listOf("Importovat stránku", "Vytvořit task v Notion", "Export dokumentu")
+            ),
+
+            // Týmová spolupráce
+            CloudServiceIntegration(
+                id = "cs-jira",
+                name = "Jira Software & Atlassian",
+                serviceCategory = "Týmová spolupráce",
+                iconName = "view_kanban",
+                description = "Správa sprintů, sledování chyb, automatické párování commitů s tickety a synchronizace backlogu.",
+                isConnected = true,
+                connectedAccountOrProject = "jira.atlassian.net/projects/OPEN",
+                availableActions = listOf("Aktivní sprint", "Vytvořit ticket", "Přiřadit issue")
             ),
             CloudServiceIntegration(
-                id = "cs-gcp",
-                name = "Google Cloud Platform (GCP)",
-                serviceCategory = "Cloud Infrastruktura",
-                iconName = "cloud_queue",
-                description = "Nasazení backendových služeb na Cloud Run, Cloud Storage buckety a BigQuery analytika.",
+                id = "cs-linear",
+                name = "Linear Project Tracker",
+                serviceCategory = "Týmová spolupráce",
+                iconName = "trending_up",
+                description = "Bleskový a minimalistický issue tracker pro agilní vývoj s automatickým přepínáním git větví.",
                 isConnected = true,
-                connectedAccountOrProject = "gcp-opencode-prod-42",
-                availableActions = listOf("Deploy na Cloud Run", "Bucket Storage", "Spustit Cloud Build")
+                connectedAccountOrProject = "linear.app/opencode (API v1)",
+                availableActions = listOf("Moje úkoly", "Nový issue", "Roadmap cykly")
             ),
             CloudServiceIntegration(
-                id = "cs-oracle",
-                name = "Oracle Cloud (OCI)",
-                serviceCategory = "Výpočetní výkon & VM",
-                iconName = "computer",
-                description = "Always Free výpočetní instance Ampere ARM A1 (4 OCPU, 24 GB RAM) pro těžké kompilace a Docker kontejnery.",
+                id = "cs-slack",
+                name = "Slack & Discord Webhooks",
+                serviceCategory = "Týmová spolupráce",
+                iconName = "forum",
+                description = "Automatická upozornění do týmových kanálů při úspěšném sestavení APK nebo nasazení verze.",
                 isConnected = true,
-                connectedAccountOrProject = "OCI Frankfurt - VM.Standard.A1.Flex",
-                availableActions = listOf("Připojit přes SSH", "Spustit vzdálený skript", "Restartovat VM")
+                connectedAccountOrProject = "Slack: #dev-opencode-alerts",
+                availableActions = listOf("Odeslat testovací ping", "Změnit kanál", "Tichý režim")
             )
         )
     )

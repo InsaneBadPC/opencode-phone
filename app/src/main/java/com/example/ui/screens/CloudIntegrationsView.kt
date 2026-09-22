@@ -36,7 +36,7 @@ fun CloudIntegrationsView(
     val context = LocalContext.current
     var selectedCategory by remember { mutableStateOf("Vše") }
 
-    val categories = listOf("Vše", "Úložiště & Záloha", "Databáze & Auth", "AI Design", "Dokumenty & Data", "Cloud VM")
+    val categories = listOf("Vše", "Git & Repozitáře", "Úložiště & Záloha", "Databáze & Vektory", "Cloud & DevOps", "AI & Výzkum", "Dokumenty & Data", "Týmová spolupráce")
 
     Column(
         modifier = modifier

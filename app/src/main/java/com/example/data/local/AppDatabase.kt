@@ -9,6 +9,7 @@ import com.example.data.local.entities.*
 
 @Database(
     entities = [
+        ProjectEntity::class,
         ChatSessionEntity::class,
         ChatMessageEntity::class,
         WorkspaceFileEntity::class,
@@ -17,10 +18,11 @@ import com.example.data.local.entities.*
         PluginEntity::class,
         SkillRegistryEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
+    abstract fun projectDao(): ProjectDao
     abstract fun chatDao(): ChatDao
     abstract fun workspaceDao(): WorkspaceDao
     abstract fun skillDao(): SkillDao

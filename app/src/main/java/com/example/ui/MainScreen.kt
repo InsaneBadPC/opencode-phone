@@ -13,6 +13,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ui.components.ProjectsDialog
+import com.example.ui.components.SessionsDialog
 import com.example.ui.screens.*
 import com.example.ui.theme.*
 
@@ -29,6 +31,25 @@ fun MainScreen(
     modifier: Modifier = Modifier
 ) {
     val currentTab by viewModel.currentTab.collectAsState()
+    val activeProject by viewModel.activeProject.collectAsState()
+    val allSessions by viewModel.sessions.collectAsState()
+
+    var showProjectsDialog by remember { mutableStateOf(false) }
+    var showSessionsDialog by remember { mutableStateOf(false) }
+
+    if (showProjectsDialog) {
+        ProjectsDialog(
+            viewModel = viewModel,
+            onDismissRequest = { showProjectsDialog = false }
+        )
+    }
+
+    if (showSessionsDialog) {
+        SessionsDialog(
+            viewModel = viewModel,
+            onDismissRequest = { showSessionsDialog = false }
+        )
+    }
 
     val tabs = listOf(
         NavigationTab("Chat", Icons.Default.ChatBubble, "nav_tab_chat"),
@@ -56,40 +77,74 @@ fun MainScreen(
                                 imageVector = Icons.Default.Terminal,
                                 contentDescription = null,
                                 tint = CyanBright,
-                                modifier = Modifier.size(24.dp)
+                                modifier = Modifier.size(22.dp)
                             )
-                            Spacer(modifier = Modifier.width(8.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 text = "OpenCode",
-                                style = MaterialTheme.typography.titleLarge,
+                                style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = Slate100
                             )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Badge(containerColor = Slate800) {
-                                Text(
-                                    text = "IDE",
-                                    color = CyanBright,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
                         }
 
-                        FilledTonalButton(
-                            onClick = { viewModel.openMarketplace("Vše") },
-                            colors = if (currentTab == 2) {
-                                ButtonDefaults.filledTonalButtonColors(containerColor = CyanBright, contentColor = Slate950)
-                            } else {
-                                ButtonDefaults.filledTonalButtonColors(containerColor = Slate800, contentColor = CyanBright)
-                            },
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.testTag("top_market_button")
+                        Row(
+                            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            Icon(Icons.Default.Storefront, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Tržiště", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            // Project Selector Chip
+                            FilledTonalButton(
+                                onClick = { showProjectsDialog = true },
+                                colors = ButtonDefaults.filledTonalButtonColors(containerColor = Slate800, contentColor = Slate200),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.testTag("top_project_chip")
+                            ) {
+                                Icon(Icons.Default.FolderSpecial, contentDescription = null, tint = CyanBright, modifier = Modifier.size(13.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = activeProject?.name?.take(10) ?: "Projekt",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Slate100
+                                )
+                                Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = Slate400, modifier = Modifier.size(14.dp))
+                            }
+
+                            // Sessions Selector Chip
+                            FilledTonalButton(
+                                onClick = { showSessionsDialog = true },
+                                colors = ButtonDefaults.filledTonalButtonColors(containerColor = Slate800, contentColor = Slate200),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.testTag("top_sessions_chip")
+                            ) {
+                                Icon(Icons.Default.ChatBubbleOutline, contentDescription = null, tint = CyanBright, modifier = Modifier.size(13.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "${allSessions.size}",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Slate100
+                                )
+                            }
+
+                            // Marketplace Button
+                            FilledTonalButton(
+                                onClick = { viewModel.openMarketplace("Vše") },
+                                colors = if (currentTab == 2) {
+                                    ButtonDefaults.filledTonalButtonColors(containerColor = CyanBright, contentColor = Slate950)
+                                } else {
+                                    ButtonDefaults.filledTonalButtonColors(containerColor = Slate800, contentColor = CyanBright)
+                                },
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.testTag("top_market_button")
+                            ) {
+                                Icon(Icons.Default.Storefront, contentDescription = null, modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(3.dp))
+                                Text("Trh", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
                 },

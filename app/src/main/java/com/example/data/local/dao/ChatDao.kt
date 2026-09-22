@@ -10,14 +10,29 @@ interface ChatDao {
     @Query("SELECT * FROM chat_sessions ORDER BY createdAt DESC")
     fun getAllSessions(): Flow<List<ChatSessionEntity>>
 
+    @Query("SELECT * FROM chat_sessions WHERE projectId = :projectId ORDER BY createdAt DESC")
+    fun getSessionsForProject(projectId: String): Flow<List<ChatSessionEntity>>
+
     @Query("SELECT * FROM chat_sessions WHERE id = :sessionId LIMIT 1")
     suspend fun getSessionById(sessionId: String): ChatSessionEntity?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertSession(session: ChatSessionEntity)
 
+    @Update
+    suspend fun updateSession(session: ChatSessionEntity)
+
+    @Query("UPDATE chat_sessions SET title = :newTitle WHERE id = :sessionId")
+    suspend fun updateSessionTitle(sessionId: String, newTitle: String)
+
     @Delete
     suspend fun deleteSession(session: ChatSessionEntity)
+
+    @Query("DELETE FROM chat_sessions WHERE id = :sessionId")
+    suspend fun deleteSessionById(sessionId: String)
+
+    @Query("DELETE FROM chat_sessions WHERE projectId = :projectId")
+    suspend fun deleteSessionsForProject(projectId: String)
 
     @Query("SELECT * FROM chat_messages WHERE sessionId = :sessionId ORDER BY timestamp ASC")
     fun getMessagesForSession(sessionId: String): Flow<List<ChatMessageEntity>>
@@ -27,4 +42,7 @@ interface ChatDao {
 
     @Query("DELETE FROM chat_messages WHERE sessionId = :sessionId")
     suspend fun deleteMessagesForSession(sessionId: String)
+
+    @Query("SELECT COUNT(*) FROM chat_messages WHERE sessionId = :sessionId")
+    suspend fun getMessageCountForSession(sessionId: String): Int
 }

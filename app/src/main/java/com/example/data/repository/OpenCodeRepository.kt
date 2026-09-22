@@ -15,6 +15,7 @@ class OpenCodeRepository(
     private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO)
 ) {
     val db get() = database
+    val projectDao = db.projectDao()
     val chatDao = db.chatDao()
     val workspaceDao = db.workspaceDao()
     val skillDao = db.skillDao()
@@ -26,6 +27,7 @@ class OpenCodeRepository(
     val terminalExecutor = TerminalExecutor(workspaceDao)
     val zenAiService = ZenAiService(webSearchService, terminalExecutor)
 
+    val allProjects: Flow<List<ProjectEntity>> = projectDao.getAllProjects()
     val allSessions: Flow<List<ChatSessionEntity>> = chatDao.getAllSessions()
     val allFiles: Flow<List<WorkspaceFileEntity>> = workspaceDao.getAllFiles()
     val allSkills: Flow<List<SkillEntity>> = skillDao.getAllSkills()
@@ -40,11 +42,57 @@ class OpenCodeRepository(
     }
 
     private suspend fun seedInitialDataIfNeeded() {
+        // 0. Projects
+        val existingProjects = projectDao.getAllProjects().first()
+        if (existingProjects.isEmpty()) {
+            projectDao.insertProjects(
+                listOf(
+                    ProjectEntity(
+                        id = "proj_opencode",
+                        name = "OpenCode Phone IDE",
+                        workingDirectory = "/workspace/opencode-phone",
+                        description = "Nativní Android IDE s AI modely, terminálem, průzkumníkem a MCP servery.",
+                        language = "Kotlin / Compose",
+                        gitBranch = "main",
+                        isDefault = true
+                    ),
+                    ProjectEntity(
+                        id = "proj_backend",
+                        name = "Cloud Backend API",
+                        workingDirectory = "/workspace/cloud-backend",
+                        description = "REST & GraphQL backend mikroservisy, autentizace, Supabase a WebSocket.",
+                        language = "TypeScript / Node.js",
+                        gitBranch = "dev",
+                        isDefault = false
+                    ),
+                    ProjectEntity(
+                        id = "proj_python",
+                        name = "AI Agent & RAG Pipeline",
+                        workingDirectory = "/workspace/ai-agent-rag",
+                        description = "Autonomní Python agent s pgvector, LangChain a sémantickým prohledáváním.",
+                        language = "Python",
+                        gitBranch = "main",
+                        isDefault = false
+                    ),
+                    ProjectEntity(
+                        id = "proj_web",
+                        name = "Web Studio Console",
+                        workingDirectory = "/workspace/web-studio",
+                        description = "Moderní klientská webová vývojářská konzole s Vite, TailwindCSS a terminálem.",
+                        language = "React / Vite",
+                        gitBranch = "feat/terminal",
+                        isDefault = false
+                    )
+                )
+            )
+        }
+
         // 1. Files
         val existingFiles = workspaceDao.getAllFiles().first()
         if (existingFiles.isEmpty()) {
             workspaceDao.insertFiles(
                 listOf(
+                    // Project 1: OpenCode Phone IDE (/workspace/opencode-phone)
                     WorkspaceFileEntity(
                         path = "src/MainActivity.kt",
                         name = "MainActivity.kt",
@@ -71,7 +119,8 @@ class OpenCodeRepository(
                             }
                         """.trimIndent(),
                         language = "kotlin",
-                        gitStatus = "unmodified"
+                        gitStatus = "unmodified",
+                        projectId = "proj_opencode"
                     ),
                     WorkspaceFileEntity(
                         path = "src/Repository.kt",
@@ -91,7 +140,8 @@ class OpenCodeRepository(
                             }
                         """.trimIndent(),
                         language = "kotlin",
-                        gitStatus = "modified"
+                        gitStatus = "modified",
+                        projectId = "proj_opencode"
                     ),
                     WorkspaceFileEntity(
                         path = "config/AppConfig.json",
@@ -110,7 +160,8 @@ class OpenCodeRepository(
                             }
                         """.trimIndent(),
                         language = "json",
-                        gitStatus = "unmodified"
+                        gitStatus = "unmodified",
+                        projectId = "proj_opencode"
                     ),
                     WorkspaceFileEntity(
                         path = "database/schema.sql",
@@ -129,23 +180,8 @@ class OpenCodeRepository(
                             );
                         """.trimIndent(),
                         language = "sql",
-                        gitStatus = "modified"
-                    ),
-                    WorkspaceFileEntity(
-                        path = "scripts/script.py",
-                        name = "script.py",
-                        content = """
-                            import sys
-
-                            def main():
-                                print("Hello from OpenCode Python Engine!")
-                                print(f"Python interpreter: {sys.version}")
-
-                            if __name__ == "__main__":
-                                main()
-                        """.trimIndent(),
-                        language = "python",
-                        gitStatus = "new"
+                        gitStatus = "modified",
+                        projectId = "proj_opencode"
                     ),
                     WorkspaceFileEntity(
                         path = "README.md",
@@ -154,116 +190,156 @@ class OpenCodeRepository(
                             # Vývojářské prostředí OpenCode pro Android
 
                             Vítejte v plnohodnotném nativním vývojářském prostředí:
+                            - 📁 **Pracovní složka**: `/workspace/opencode-phone`
                             - 💬 **Zen AI Chat**: Inteligentní programovací asistent se specializovanými modely.
-                            - 📁 **Průzkumník souborů**: Hierarchický strom složek, správa, vyhledávání a breadcrumb navigace.
-                            - 📝 **Editor kódu**: Plnohodnotný editor s číslováním řádků, AI refaktoringem a náhledem.
-                            - 🌐 **Internet**: Vyhledávání v technických dokumentacích a načítání URL.
-                            - 🧠 **Dovednosti (Skills)**: Přepínatelná systémová pravidla a Skill Registry.
-                            - 🔌 **MCP**: Protokol Model Context Protocol s podporou STDIO a SSE.
-                            - 🧩 **Správa pluginů & AI Poskytovatelé**: Více providerů (Groq, OpenRouter, Gemini, Ollama).
-                            - 💻 **Terminál & CI/CD**: Vestavěná konzole a GitHub Actions workflow.
+                            - 📁 **Průzkumník souborů**: Hierarchický strom složek a breadcrumb navigace.
+                            - 🌐 **Konektory & Integrace**: GitHub, GitLab, S3, Supabase, Cloudflare, Neon.
+                            - 🔌 **MCP**: Protokol Model Context Protocol se 10 servery.
                         """.trimIndent(),
                         language = "markdown",
-                        gitStatus = "unmodified"
+                        gitStatus = "unmodified",
+                        projectId = "proj_opencode"
                     ),
-                    WorkspaceFileEntity(
-                        path = "build.gradle.kts",
-                        name = "build.gradle.kts",
-                        content = """
-                            plugins {
-                                alias(libs.plugins.android.application) apply false
-                                alias(libs.plugins.kotlin.android) apply false
-                                alias(libs.plugins.kotlin.compose) apply false
-                            }
-                        """.trimIndent(),
-                        language = "gradle",
-                        gitStatus = "unmodified"
-                    ),
-                    WorkspaceFileEntity(
-                        path = "app/build.gradle.kts",
-                        name = "build.gradle.kts",
-                        content = """
-                            plugins {
-                                alias(libs.plugins.android.application)
-                                alias(libs.plugins.kotlin.android)
-                                alias(libs.plugins.kotlin.compose)
-                            }
 
-                            android {
-                                namespace = "com.example"
-                                compileSdk = 35
-                                defaultConfig {
-                                    applicationId = "com.aistudio.opencode"
-                                    minSdk = 26
-                                    targetSdk = 35
-                                }
+                    // Project 2: Cloud Backend API (/workspace/cloud-backend)
+                    WorkspaceFileEntity(
+                        path = "src/server.ts",
+                        name = "server.ts",
+                        content = """
+                            import express from 'express';
+                            import { createClient } from '@supabase/supabase-js';
+
+                            const app = express();
+                            const port = process.env.PORT || 3000;
+
+                            app.use(express.json());
+
+                            app.get('/health', (req, res) => {
+                                res.json({ status: 'healthy', project: 'cloud-backend', timestamp: Date.now() });
+                            });
+
+                            app.listen(port, () => {
+                                console.log(`Backend API running on port ${'$'}{port}`);
+                            });
+                        """.trimIndent(),
+                        language = "typescript",
+                        gitStatus = "unmodified",
+                        projectId = "proj_backend"
+                    ),
+                    WorkspaceFileEntity(
+                        path = "package.json",
+                        name = "package.json",
+                        content = """
+                            {
+                              "name": "cloud-backend-api",
+                              "version": "1.0.0",
+                              "main": "src/server.ts",
+                              "scripts": {
+                                "start": "ts-node src/server.ts",
+                                "build": "tsc",
+                                "test": "jest"
+                              },
+                              "dependencies": {
+                                "express": "^4.19.2",
+                                "@supabase/supabase-js": "^2.45.0"
+                              }
                             }
                         """.trimIndent(),
-                        language = "gradle",
-                        gitStatus = "unmodified"
+                        language = "json",
+                        gitStatus = "unmodified",
+                        projectId = "proj_backend"
                     ),
                     WorkspaceFileEntity(
-                        path = "app/src/main/AndroidManifest.xml",
-                        name = "AndroidManifest.xml",
+                        path = ".env",
+                        name = ".env",
                         content = """
-                            <?xml version="1.0" encoding="utf-8"?>
-                            <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-                                <uses-permission android:name="android.permission.INTERNET" />
-                                <application
-                                    android:allowBackup="true"
-                                    android:label="@string/app_name"
-                                    android:theme="@style/Theme.OpenCode">
-                                    <activity android:name=".MainActivity" android:exported="true">
-                                        <intent-filter>
-                                            <action android:name="android.intent.action.MAIN" />
-                                            <category android:name="android.intent.category.LAUNCHER" />
-                                        </intent-filter>
-                                    </activity>
-                                </application>
-                            </manifest>
-                        """.trimIndent(),
-                        language = "xml",
-                        gitStatus = "unmodified"
-                    ),
-                    WorkspaceFileEntity(
-                        path = "app/src/main/res/values/strings.xml",
-                        name = "strings.xml",
-                        content = """
-                            <resources>
-                                <string name="app_name">OpenCode</string>
-                                <string name="workspace_title">OpenCode Workspace</string>
-                            </resources>
-                        """.trimIndent(),
-                        language = "xml",
-                        gitStatus = "unmodified"
-                    ),
-                    WorkspaceFileEntity(
-                        path = "docs/ARCHITECTURE.md",
-                        name = "ARCHITECTURE.md",
-                        content = """
-                            # Architektura projektu OpenCode
-
-                            ## Komponenty
-                            1. **FileExplorerComponent**: Stromová navigace, správa souborů a složek.
-                            2. **ZenAiService**: Víceposkytovatelový AI klient (Gemini, Groq, OpenRouter, Ollama).
-                            3. **SkillRegistry**: Detekce a ukládání znovupoužitelných dovedností.
-                            4. **TerminalExecutor**: Lokální spouštěč příkazů v sandboxu.
-                        """.trimIndent(),
-                        language = "markdown",
-                        gitStatus = "new"
-                    ),
-                    WorkspaceFileEntity(
-                        path = "scripts/build_apk.sh",
-                        name = "build_apk.sh",
-                        content = """
-                            #!/bin/bash
-                            set -e
-                            echo "=== Building OpenCode APK ==="
-                            gradle assembleDebug --stacktrace
-                            echo "Build complete: app/build/outputs/apk/debug/app-debug.apk"
+                            PORT=3000
+                            NODE_ENV=development
+                            SUPABASE_URL=https://opencode-production-db.supabase.co
+                            SUPABASE_KEY=anon-key-placeholder
                         """.trimIndent(),
                         language = "shell",
-                        gitStatus = "unmodified"
+                        gitStatus = "unmodified",
+                        projectId = "proj_backend"
+                    ),
+
+                    // Project 3: AI Agent & RAG Pipeline (/workspace/ai-agent-rag)
+                    WorkspaceFileEntity(
+                        path = "main.py",
+                        name = "main.py",
+                        content = """
+                            import os
+                            import sys
+
+                            def run_rag_agent(query: str):
+                                print(f"[Agent Planner] Executing RAG query: {query}")
+                                # Sémantické vyhledávání v pgvector
+                                print("[Vector Search] 3 relevant context chunks retrieved.")
+                                return f"Synthesized answer for: {query}"
+
+                            if __name__ == "__main__":
+                                query = sys.argv[1] if len(sys.argv) > 1 else "Explain architecture"
+                                print(run_rag_agent(query))
+                        """.trimIndent(),
+                        language = "python",
+                        gitStatus = "unmodified",
+                        projectId = "proj_python"
+                    ),
+                    WorkspaceFileEntity(
+                        path = "requirements.txt",
+                        name = "requirements.txt",
+                        content = """
+                            langchain>=0.2.0
+                            openai>=1.30.0
+                            psycopg2-binary>=2.9.9
+                            pgvector>=0.2.5
+                            pydantic>=2.7.0
+                        """.trimIndent(),
+                        language = "shell",
+                        gitStatus = "unmodified",
+                        projectId = "proj_python"
+                    ),
+
+                    // Project 4: Web Studio Console (/workspace/web-studio)
+                    WorkspaceFileEntity(
+                        path = "src/App.tsx",
+                        name = "App.tsx",
+                        content = """
+                            import React, { useState } from 'react';
+
+                            export function App() {
+                              const [activeTab, setActiveTab] = useState('editor');
+                              return (
+                                <div className="h-screen w-screen bg-slate-950 text-slate-100 flex flex-col">
+                                  <header className="h-12 bg-slate-900 border-b border-slate-800 flex items-center px-4">
+                                    <span className="font-bold text-cyan-400">OpenCode Web Studio</span>
+                                  </header>
+                                  <main className="flex-1 p-4">
+                                    <p>Webová vývojářská konzole připravena.</p>
+                                  </main>
+                                </div>
+                              );
+                            }
+                        """.trimIndent(),
+                        language = "typescript",
+                        gitStatus = "unmodified",
+                        projectId = "proj_web"
+                    ),
+                    WorkspaceFileEntity(
+                        path = "vite.config.ts",
+                        name = "vite.config.ts",
+                        content = """
+                            import { defineConfig } from 'vite';
+                            import react from '@vitejs/plugin-react';
+
+                            export default defineConfig({
+                              plugins: [react()],
+                              server: { port: 5173 }
+                            });
+                        """.trimIndent(),
+                        language = "typescript",
+                        gitStatus = "unmodified",
+                        projectId = "proj_web"
                     )
                 )
             )
@@ -323,7 +399,7 @@ class OpenCodeRepository(
             )
         }
 
-        // 3. MCP Servers
+        // 3. MCP Servers (Rozšířený seznam MCP konektorů)
         val existingMcp = mcpDao.getAllServers().first()
         if (existingMcp.isEmpty()) {
             mcpDao.insertServers(
@@ -349,6 +425,16 @@ class OpenCodeRepository(
                         isConnected = true
                     ),
                     McpServerEntity(
+                        id = "mcp_gitlab",
+                        name = "GitLab MCP Connector",
+                        description = "GitLab CI/CD správa, issues, merge requesty a pipelines přes SSE protokol.",
+                        transport = "SSE",
+                        endpointOrCommand = "https://gitlab.com/api/v4/mcp",
+                        toolsJson = """["get_project", "list_merge_requests", "trigger_pipeline", "get_file_blame"]""",
+                        isInstalled = true,
+                        isConnected = true
+                    ),
+                    McpServerEntity(
                         id = "mcp_postgres",
                         name = "PostgreSQL MCP",
                         description = "Provádění analytických a vývojářských SQL dotazů v lokální databázi.",
@@ -359,12 +445,62 @@ class OpenCodeRepository(
                         isConnected = false
                     ),
                     McpServerEntity(
+                        id = "mcp_sqlite",
+                        name = "SQLite & Memory MCP",
+                        description = "Lehký in-memory SQL konektor pro rychlé testování databázových entit a schémat.",
+                        transport = "STDIO",
+                        endpointOrCommand = "npx -y @modelcontextprotocol/server-sqlite /workspace/data.db",
+                        toolsJson = """["read_query", "write_query", "create_table", "list_tables"]""",
+                        isInstalled = true,
+                        isConnected = true
+                    ),
+                    McpServerEntity(
                         id = "mcp_brave_search",
                         name = "Brave Web Search MCP",
                         description = "Umožňuje OpenCode AI vyhledávat na internetu, stahovat dokumentaci a citovat zdroje.",
                         transport = "SSE",
                         endpointOrCommand = "https://api.search.brave.com/res/v1/web/search",
                         toolsJson = """["brave_web_search", "brave_local_search"]""",
+                        isInstalled = true,
+                        isConnected = true
+                    ),
+                    McpServerEntity(
+                        id = "mcp_docker",
+                        name = "Docker & Containers MCP",
+                        description = "Inspekce běžících Docker kontejnerů, buildování image a sledování logů.",
+                        transport = "STDIO",
+                        endpointOrCommand = "docker run -i --rm -v /var/run/docker.sock:/var/run/docker.sock mcp/docker",
+                        toolsJson = """["list_containers", "inspect_container", "get_logs", "run_container"]""",
+                        isInstalled = true,
+                        isConnected = true
+                    ),
+                    McpServerEntity(
+                        id = "mcp_slack",
+                        name = "Slack Team MCP",
+                        description = "Odesílání statusových zpráv, sledování kanálů a notifikace o testech.",
+                        transport = "SSE",
+                        endpointOrCommand = "https://slack.com/api/mcp/sse",
+                        toolsJson = """["post_message", "list_channels", "add_reaction", "get_thread"]""",
+                        isInstalled = true,
+                        isConnected = false
+                    ),
+                    McpServerEntity(
+                        id = "mcp_redis",
+                        name = "Redis & Cache MCP",
+                        description = "Správa mezipaměti, klíčů, expiračních dob TTL a testování distribuovaných struktur.",
+                        transport = "STDIO",
+                        endpointOrCommand = "npx -y @modelcontextprotocol/server-redis redis://localhost:6379",
+                        toolsJson = """["get_key", "set_key", "delete_key", "list_keys", "ttl"]""",
+                        isInstalled = true,
+                        isConnected = false
+                    ),
+                    McpServerEntity(
+                        id = "mcp_s3",
+                        name = "AWS S3 Storage MCP",
+                        description = "Procházení objektových bucketů, nahrávání archivů a stahování datasetů.",
+                        transport = "STDIO",
+                        endpointOrCommand = "npx -y @modelcontextprotocol/server-s3",
+                        toolsJson = """["list_buckets", "list_objects", "get_object", "put_object"]""",
                         isInstalled = true,
                         isConnected = true
                     )
@@ -571,33 +707,73 @@ class OpenCodeRepository(
             )
         }
 
-        // 5. Initial Chat Session
+        // 5. Initial Chat Sessions (Rozdělené podle projektů)
         val existingSessions = chatDao.getAllSessions().first()
         if (existingSessions.isEmpty()) {
-            val initialSessionId = UUID.randomUUID().toString()
+            val session1Id = "sess_opencode_core"
+            val session2Id = "sess_backend_api"
+            val session3Id = "sess_rag_agent"
+
             chatDao.insertSession(
                 ChatSessionEntity(
-                    id = initialSessionId,
-                    title = "Inicializace OpenCode Workspace",
-                    modelName = ZenModel.ZEN_CODER.displayName
+                    id = session1Id,
+                    title = "Vývoj OpenCode Phone & Compose UI",
+                    modelName = ZenModel.ZEN_CODER.displayName,
+                    projectId = "proj_opencode"
                 )
             )
             chatDao.insertMessage(
                 ChatMessageEntity(
-                    sessionId = initialSessionId,
+                    sessionId = session1Id,
                     role = "assistant",
                     content = """
-                        Vítejte v **OpenCode**! Jsem váš inteligentní programovací asistent s modely **Zen**.
+                        Vítejte v projektu **OpenCode Phone IDE**!
+                        
+                        📁 **Pracovní složka**: `/workspace/opencode-phone`
+                        - Přepínejte projekty a relace přes horní lištu.
+                        - Každý projekt má svou vlastní vyhrazenou pracovní složku a soubory.
+                        - Připojeno 10 MCP serverů a rozšířený hub cloudových konektorů.
+                    """.trimIndent()
+                )
+            )
 
-                        Prostředí je plně připraveno:
-                        - 📁 **Soubory**: Projektové soubory ve workspace (`MainActivity.kt`, `Repository.kt`, `schema.sql`, `AppConfig.json`, `script.py`).
-                        - 🌐 **Internet**: Vyhledávání v dokumentacích a inspekce URL přes `/search <dotaz>`.
-                        - 🧠 **Dovednosti (Skills)**: Předinstalované specializace pro Jetpack Compose, MCP a Bezpečnostní audit.
-                        - 🔌 **MCP**: Připojeny servery Filesystem, GitHub a Brave Search.
-                        - 🧩 **Správce pluginů**: Katalog s vyhledáváním, instalací, aktualizacemi a podrobnostmi o doplňcích.
-                        - 💻 **Terminál**: Spouštění příkazů přes `/terminal <příkaz>` (např. `/terminal git status` nebo `/terminal ls`).
+            chatDao.insertSession(
+                ChatSessionEntity(
+                    id = session2Id,
+                    title = "Backend REST API & Supabase napojení",
+                    modelName = "Claude 3.7 Sonnet (Anthropic)",
+                    projectId = "proj_backend"
+                )
+            )
+            chatDao.insertMessage(
+                ChatMessageEntity(
+                    sessionId = session2Id,
+                    role = "assistant",
+                    content = """
+                        Projekt **Cloud Backend API** aktivní.
+                        📁 **Pracovní složka**: `/workspace/cloud-backend`
+                        - TypeScript Express server připraven k běhu.
+                        - Databázový konektor Supabase & PostgreSQL MCP je nakonfigurován.
+                    """.trimIndent()
+                )
+            )
 
-                        S jakým vývojářským úkolem dnes začneme?
+            chatDao.insertSession(
+                ChatSessionEntity(
+                    id = session3Id,
+                    title = "RAG Agent & pgvector embeddingy",
+                    modelName = "GPT-4o (OpenAI)",
+                    projectId = "proj_python"
+                )
+            )
+            chatDao.insertMessage(
+                ChatMessageEntity(
+                    sessionId = session3Id,
+                    role = "assistant",
+                    content = """
+                        Projekt **AI Agent & RAG Pipeline** aktivní.
+                        📁 **Pracovní složka**: `/workspace/ai-agent-rag`
+                        - Skripty LangChain a vektorové prohledávání připraveny.
                     """.trimIndent()
                 )
             )

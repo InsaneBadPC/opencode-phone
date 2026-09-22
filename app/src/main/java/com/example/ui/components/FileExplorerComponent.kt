@@ -76,10 +76,13 @@ fun FileExplorerComponent(
     onFileSelected: ((WorkspaceFileEntity) -> Unit)? = null,
     compactMode: Boolean = false
 ) {
-    val files by viewModel.workspaceFiles.collectAsState()
+    val files by viewModel.activeProjectFiles.collectAsState()
+    val activeProject by viewModel.activeProject.collectAsState()
     val openedFile by viewModel.openedFile.collectAsState()
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
+
+    var showProjectsDialog by remember { mutableStateOf(false) }
 
     // Search and filter state
     var searchQuery by remember { mutableStateOf("") }
@@ -347,6 +350,70 @@ fun FileExplorerComponent(
                     }
                 }
 
+                // Active Project Banner with Working Directory
+                activeProject?.let { proj ->
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 4.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { showProjectsDialog = true }
+                            .testTag("explorer_project_banner"),
+                        color = Slate950,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Slate800)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.FolderSpecial,
+                                    contentDescription = null,
+                                    tint = CyanBright,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Column {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = proj.name,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Slate100
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Badge(containerColor = Slate800) {
+                                            Text(proj.language, fontSize = 8.sp, color = CyanBright)
+                                        }
+                                    }
+                                    Text(
+                                        text = proj.workingDirectory,
+                                        fontSize = 10.sp,
+                                        color = AmberWarning,
+                                        fontFamily = FontFamily.Monospace,
+                                        maxLines = 1
+                                    )
+                                }
+                            }
+
+                            FilledTonalButton(
+                                onClick = { showProjectsDialog = true },
+                                shape = RoundedCornerShape(6.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                colors = ButtonDefaults.filledTonalButtonColors(containerColor = Slate800, contentColor = CyanBright),
+                                modifier = Modifier.height(28.dp)
+                            ) {
+                                Text("Projekty", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+
                 // View Mode Segmented Bar
                 Row(
                     modifier = Modifier
@@ -547,6 +614,14 @@ fun FileExplorerComponent(
                 showNewFileDialog = false
                 Toast.makeText(context, "Soubor $fullPath vytvořen", Toast.LENGTH_SHORT).show()
             }
+        )
+    }
+
+    // Projects Dialog
+    if (showProjectsDialog) {
+        ProjectsDialog(
+            viewModel = viewModel,
+            onDismissRequest = { showProjectsDialog = false }
         )
     }
 

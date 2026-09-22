@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -26,6 +27,8 @@ import com.example.data.local.entities.ChatMessageEntity
 import com.example.ui.OpenCodeViewModel
 import com.example.ui.components.AiModelPickerDialog
 import com.example.ui.components.CodeBlockView
+import com.example.ui.components.ProjectsDialog
+import com.example.ui.components.SessionsDialog
 import com.example.ui.components.ToolExecutionCard
 import com.example.ui.theme.*
 
@@ -44,8 +47,27 @@ fun ChatScreen(
     val skills by viewModel.skills.collectAsState()
     val enabledSkills = remember(skills) { skills.filter { it.isEnabled } }
 
+    val activeProject by viewModel.activeProject.collectAsState()
+    val sessions by viewModel.sessions.collectAsState()
+
     var showModelPickerDialog by remember { mutableStateOf(false) }
+    var showSessionsDialog by remember { mutableStateOf(false) }
+    var showProjectsDialog by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
+
+    if (showSessionsDialog) {
+        SessionsDialog(
+            viewModel = viewModel,
+            onDismissRequest = { showSessionsDialog = false }
+        )
+    }
+
+    if (showProjectsDialog) {
+        ProjectsDialog(
+            viewModel = viewModel,
+            onDismissRequest = { showProjectsDialog = false }
+        )
+    }
 
     if (showModelPickerDialog) {
         AiModelPickerDialog(
@@ -119,6 +141,31 @@ fun ChatScreen(
                     // Session Controls
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(
+                            onClick = { showSessionsDialog = true },
+                            modifier = Modifier.testTag("btn_open_sessions_dialog")
+                        ) {
+                            BadgedBox(
+                                badge = {
+                                    Badge(containerColor = CyanBright) {
+                                        Text(
+                                            text = "${sessions.size}",
+                                            color = Slate950,
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.ChatBubbleOutline,
+                                    contentDescription = "Seznam relací",
+                                    tint = Slate200,
+                                    modifier = Modifier.size(19.dp)
+                                )
+                            }
+                        }
+
+                        IconButton(
                             onClick = { viewModel.createNewSession() },
                             modifier = Modifier.testTag("new_chat_button")
                         ) {
@@ -127,6 +174,46 @@ fun ChatScreen(
                                 contentDescription = "Nová relace",
                                 tint = Slate200
                             )
+                        }
+                    }
+                }
+
+                // Active Project & Working Folder Chip
+                activeProject?.let { proj ->
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = Slate950,
+                        border = androidx.compose.foundation.BorderStroke(0.5.dp, Slate800),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp)
+                            .clickable { showProjectsDialog = true }
+                            .testTag("chat_active_project_bar")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                Icon(Icons.Default.FolderSpecial, contentDescription = null, tint = CyanBright, modifier = Modifier.size(13.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = proj.name,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Slate200
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = proj.workingDirectory,
+                                    fontSize = 10.sp,
+                                    color = AmberWarning,
+                                    fontFamily = FontFamily.Monospace,
+                                    maxLines = 1
+                                )
+                            }
+                            Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = Slate400, modifier = Modifier.size(16.dp))
                         }
                     }
                 }
