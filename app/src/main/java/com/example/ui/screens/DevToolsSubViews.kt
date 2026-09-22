@@ -17,11 +17,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.models.*
+import com.example.data.update.UpdateCheckState
 import com.example.ui.OpenCodeViewModel
 import com.example.ui.theme.*
 
@@ -36,6 +39,10 @@ fun GitStudioView(viewModel: OpenCodeViewModel, modifier: Modifier = Modifier) {
     val selectedDiff by viewModel.selectedDiffFile.collectAsState()
     var commitMessage by remember { mutableStateOf("") }
     val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
+    val updateState by viewModel.updateState.collectAsState()
+    val updateConfig by viewModel.updateConfig.collectAsState()
+    var repoInput by remember { mutableStateOf(updateConfig.githubRepo) }
 
     if (selectedDiff != null) {
         // Visual Diff Dialog
@@ -126,6 +133,148 @@ fun GitStudioView(viewModel: OpenCodeViewModel, modifier: Modifier = Modifier) {
             .padding(horizontal = 14.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        // App Versioning & In-App Update Card
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Slate900),
+                shape = RoundedCornerShape(12.dp),
+                border = BorderStroke(1.dp, CyanBright.copy(alpha = 0.4f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.SystemUpdate, contentDescription = null, tint = CyanBright, modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Verzování SemVer & In-App Aktualizace",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = Slate100
+                            )
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = Slate800,
+                            border = BorderStroke(0.5.dp, CyanBright)
+                        ) {
+                            Text(
+                                text = "v${viewModel.appVersionName}",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace,
+                                color = CyanBright,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Text(
+                        text = "Aplikace nativně kontroluje GitHub Releases přes oficiální API. Při publikaci nového tagu (např. v1.1.0) nabídne dialog s přímým stažením a instalací nového APK.",
+                        fontSize = 11.sp,
+                        color = Slate300,
+                        lineHeight = 16.sp
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // GitHub Repository Input
+                    OutlinedTextField(
+                        value = repoInput,
+                        onValueChange = {
+                            repoInput = it
+                            viewModel.setUpdateGithubRepo(it)
+                        },
+                        label = { Text("GitHub Repozitář (owner/repo)", fontSize = 10.sp) },
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = CyanBright,
+                            unfocusedBorderColor = Slate700,
+                            focusedTextColor = Slate100,
+                            unfocusedTextColor = Slate100
+                        ),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Update Trigger Buttons
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = { viewModel.checkForUpdates() },
+                            colors = ButtonDefaults.buttonColors(containerColor = CyanBright, contentColor = Slate950),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.weight(1.2f)
+                        ) {
+                            Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Zkontrolovat aktualizace", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        OutlinedButton(
+                            onClick = { viewModel.simulateNewVersion() },
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = EmeraldBright),
+                            border = BorderStroke(1.dp, EmeraldBright.copy(alpha = 0.6f)),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Simulovat dialog", fontSize = 11.sp)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Automation command
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFF070B14),
+                        border = BorderStroke(0.5.dp, Slate800),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(10.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Příkaz pro zvýšení verze & push na GitHub:", fontSize = 10.sp, color = Slate400)
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = "./scripts/bump_version.sh 1.1.0 \"Release notes\"",
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 11.sp,
+                                    color = EmeraldBright
+                                )
+                            }
+
+                            IconButton(
+                                onClick = {
+                                    clipboardManager.setText(AnnotatedString("./scripts/bump_version.sh 1.1.0 \"Release notes\""))
+                                    Toast.makeText(context, "Příkaz zkopírován do schránky", Toast.LENGTH_SHORT).show()
+                                },
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Icon(Icons.Default.ContentCopy, contentDescription = "Kopírovat", tint = CyanBright, modifier = Modifier.size(16.dp))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // Commit Box
         item {
             Card(

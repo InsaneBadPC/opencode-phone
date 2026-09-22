@@ -17,8 +17,13 @@ import com.example.data.model.ParsedGithubRepo
 import com.example.data.models.*
 import com.example.data.repository.OpenCodeRepository
 import com.example.data.security.SecureKeyStorage
+import com.example.data.sync.TermuxSessionSyncService
+import com.example.data.update.AppReleaseInfo
+import com.example.data.update.AppUpdateManager
+import com.example.data.update.UpdateCheckState
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.io.File
 import java.util.UUID
 
 data class MarketplaceItemUi(
@@ -74,6 +79,89 @@ class OpenCodeViewModel(application: Application) : AndroidViewModel(application
         if (filtered.isNotEmpty()) filtered else allSess
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    // Termux OpenCode CLI Automatic Sync
+    val termuxSyncService = TermuxSessionSyncService(
+        chatDao = repository.chatDao,
+        projectDao = repository.projectDao,
+        scope = viewModelScope
+    )
+    val termuxSyncConfig: StateFlow<TermuxSyncConfig> = termuxSyncService.config
+    val termuxSyncStatus: StateFlow<TermuxSyncStatus> = termuxSyncService.status
+    val termuxSyncLogs: StateFlow<List<String>> = termuxSyncService.logs
+
+    fun toggleTermuxAutoSync(enabled: Boolean) {
+        termuxSyncService.toggleAutoSync(enabled)
+    }
+
+    fun setTermuxSyncInterval(seconds: Int) {
+        termuxSyncService.setSyncInterval(seconds)
+    }
+
+    fun setTermuxSyncPort(port: Int) {
+        termuxSyncService.setPort(port)
+    }
+
+    fun triggerTermuxSyncNow() {
+        viewModelScope.launch {
+            termuxSyncService.performSync()
+        }
+    }
+
+    fun exportCurrentSessionToTermux() {
+        val currentId = _currentSessionId.value ?: return
+        viewModelScope.launch {
+            termuxSyncService.exportSessionToTermux(currentId)
+        }
+    }
+
+    // Versioning and In-App Update Engine
+    val appVersionName: String = try {
+        com.example.BuildConfig.VERSION_NAME
+    } catch (_: Exception) {
+        "1.1.1"
+    }
+    val appVersionCode: Int = try {
+        com.example.BuildConfig.VERSION_CODE
+    } catch (_: Exception) {
+        10101
+    }
+
+    val appUpdateManager = AppUpdateManager(getApplication<Application>().applicationContext)
+    val updateState: StateFlow<UpdateCheckState> = appUpdateManager.updateState
+    val updateConfig = appUpdateManager.config
+
+    fun checkForUpdates() {
+        viewModelScope.launch {
+            appUpdateManager.checkForUpdates(appVersionName)
+        }
+    }
+
+    fun downloadAndInstallUpdate(release: AppReleaseInfo) {
+        viewModelScope.launch {
+            appUpdateManager.downloadAndInstall(release)
+        }
+    }
+
+    fun launchInstaller(apkFile: File) {
+        appUpdateManager.launchInstaller(apkFile)
+    }
+
+    fun openGitHubReleaseUrl(url: String) {
+        appUpdateManager.openBrowser(url)
+    }
+
+    fun dismissUpdate() {
+        appUpdateManager.dismissUpdate()
+    }
+
+    fun setUpdateGithubRepo(repo: String) {
+        appUpdateManager.setGithubRepo(repo)
+    }
+
+    fun simulateNewVersion() {
+        appUpdateManager.simulateNewVersion("1.2.0")
+    }
+
     val secureKeyStorage by lazy {
         SecureKeyStorage(getApplication<Application>().applicationContext)
     }
@@ -111,7 +199,7 @@ class OpenCodeViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun openAiProvidersSettings() {
-        selectTab(5) // Navigate to Nástroje / Settings
+        selectTab(6) // Navigate to Nástroje / Settings
         _settingsSubTab.value = 9 // Select Nastavení tab
     }
 

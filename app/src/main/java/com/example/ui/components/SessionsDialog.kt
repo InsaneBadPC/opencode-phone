@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -14,6 +15,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -24,6 +26,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.data.local.entities.ChatSessionEntity
+import com.example.data.models.TermuxSyncState
 import com.example.ui.OpenCodeViewModel
 import com.example.ui.theme.*
 import java.text.SimpleDateFormat
@@ -39,6 +42,8 @@ fun SessionsDialog(
     val activeProjectId by viewModel.currentProjectId.collectAsState()
     val allProjects by viewModel.allProjects.collectAsState()
     val currentSessionId by viewModel.currentSessionId.collectAsState()
+    val termuxSyncConfig by viewModel.termuxSyncConfig.collectAsState()
+    val termuxSyncStatus by viewModel.termuxSyncStatus.collectAsState()
     val context = LocalContext.current
 
     var filterOnlyCurrentProject by remember { mutableStateOf(false) }
@@ -119,7 +124,85 @@ fun SessionsDialog(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                // Termux CLI Auto-Sync Banner
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = Slate950,
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        if (termuxSyncConfig.isAutoSyncEnabled) EmeraldSuccess.copy(alpha = 0.5f) else Slate800
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 10.dp, bottom = 4.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(if (termuxSyncConfig.isAutoSyncEnabled) EmeraldSuccess else Slate500)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = "Termux CLI Auto-Sync",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Slate100
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Badge(containerColor = Slate800) {
+                                        Text(
+                                            text = ":${termuxSyncConfig.port}",
+                                            fontSize = 9.sp,
+                                            color = CyanBright,
+                                            fontFamily = FontFamily.Monospace
+                                        )
+                                    }
+                                }
+                                Text(
+                                    text = if (termuxSyncConfig.isAutoSyncEnabled)
+                                        "Aktivní synchronizace (každých ${termuxSyncConfig.syncIntervalSeconds}s)"
+                                    else "Automatická synchronizace pozastavena",
+                                    fontSize = 9.sp,
+                                    color = if (termuxSyncConfig.isAutoSyncEnabled) EmeraldBright else Slate400
+                                )
+                            }
+                        }
+
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(
+                                onClick = {
+                                    viewModel.triggerTermuxSyncNow()
+                                    Toast.makeText(context, "Synchronizuji z Termuxu...", Toast.LENGTH_SHORT).show()
+                                },
+                                modifier = Modifier.size(32.dp).testTag("btn_termux_sync_now")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Sync,
+                                    contentDescription = "Synchronizovat z Termuxu",
+                                    tint = if (termuxSyncStatus.state == TermuxSyncState.SYNCING) AmberWarning else CyanBright,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+
+                            Switch(
+                                checked = termuxSyncConfig.isAutoSyncEnabled,
+                                onCheckedChange = { viewModel.toggleTermuxAutoSync(it) },
+                                modifier = Modifier.scale(0.75f).testTag("switch_termux_auto_sync")
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
 
                 // Search Bar + Create Button
                 Row(
@@ -324,6 +407,8 @@ private fun SessionCardItem(
     val dateFormat = remember { SimpleDateFormat("d. M. yyyy, HH:mm", Locale.getDefault()) }
     val formattedDate = remember(session.createdAt) { dateFormat.format(Date(session.createdAt)) }
 
+    val isTermuxSession = session.projectId == "proj_termux_cli" || session.title.contains("Termux", ignoreCase = true)
+
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -331,7 +416,8 @@ private fun SessionCardItem(
             .clickable { onSelect() },
         shape = RoundedCornerShape(12.dp),
         color = if (isCurrent) Slate800 else Slate850,
-        border = if (isCurrent) androidx.compose.foundation.BorderStroke(1.5.dp, CyanBright) else androidx.compose.foundation.BorderStroke(1.dp, Slate700)
+        border = if (isCurrent) androidx.compose.foundation.BorderStroke(1.5.dp, if (isTermuxSession) EmeraldSuccess else CyanBright)
+        else androidx.compose.foundation.BorderStroke(1.dp, if (isTermuxSession) EmeraldSuccess.copy(alpha = 0.4f) else Slate700)
     ) {
         Row(
             modifier = Modifier
@@ -344,13 +430,20 @@ private fun SessionCardItem(
                 modifier = Modifier
                     .size(36.dp)
                     .clip(RoundedCornerShape(8.dp))
-                    .background(if (isCurrent) CyanBright.copy(alpha = 0.2f) else Slate900),
+                    .background(
+                        if (isCurrent) (if (isTermuxSession) EmeraldSuccess else CyanBright).copy(alpha = 0.2f)
+                        else Slate900
+                    ),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = if (isCurrent) Icons.Default.ChatBubble else Icons.Default.ChatBubbleOutline,
+                    imageVector = if (isTermuxSession) Icons.Default.Terminal
+                    else if (isCurrent) Icons.Default.ChatBubble
+                    else Icons.Default.ChatBubbleOutline,
                     contentDescription = null,
-                    tint = if (isCurrent) CyanBright else Slate400,
+                    tint = if (isTermuxSession) EmeraldBright
+                    else if (isCurrent) CyanBright
+                    else Slate400,
                     modifier = Modifier.size(18.dp)
                 )
             }
@@ -364,10 +457,16 @@ private fun SessionCardItem(
                         text = session.title,
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Medium,
-                        color = if (isCurrent) CyanBright else Slate100,
+                        color = if (isCurrent) (if (isTermuxSession) EmeraldBright else CyanBright) else Slate100,
                         maxLines = 1,
                         modifier = Modifier.weight(1f, fill = false)
                     )
+                    if (isTermuxSession) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Badge(containerColor = EmeraldSuccess.copy(alpha = 0.2f)) {
+                            Text("TERMUX", color = EmeraldBright, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
                     if (isCurrent) {
                         Spacer(modifier = Modifier.width(6.dp))
                         Badge(containerColor = CyanBright) {

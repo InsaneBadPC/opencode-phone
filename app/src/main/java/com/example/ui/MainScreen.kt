@@ -1,6 +1,7 @@
 package com.example.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -15,6 +16,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.components.ProjectsDialog
 import com.example.ui.components.SessionsDialog
+import com.example.ui.components.UpdateDialog
 import com.example.ui.screens.*
 import com.example.ui.theme.*
 
@@ -51,11 +53,14 @@ fun MainScreen(
         )
     }
 
+    UpdateDialog(viewModel = viewModel)
+
     val tabs = listOf(
         NavigationTab("Chat", Icons.Default.ChatBubble, "nav_tab_chat"),
         NavigationTab("Soubory", Icons.Default.Folder, "nav_tab_files"),
         NavigationTab("Tržiště", Icons.Default.Storefront, "nav_tab_market"),
         NavigationTab("Internet", Icons.Default.Public, "nav_tab_internet"),
+        NavigationTab("YouTube", Icons.Default.PlayCircle, "nav_tab_youtube"),
         NavigationTab("Dovednosti", Icons.Default.Extension, "nav_tab_skills"),
         NavigationTab("Nástroje", Icons.Default.Handyman, "nav_tab_plugins")
     )
@@ -86,6 +91,22 @@ fun MainScreen(
                                 fontWeight = FontWeight.Bold,
                                 color = Slate100
                             )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = Slate800,
+                                modifier = Modifier
+                                    .clickable { viewModel.checkForUpdates() }
+                                    .testTag("top_version_badge")
+                            ) {
+                                Text(
+                                    text = "v${viewModel.appVersionName}",
+                                    fontSize = 9.sp,
+                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                    color = CyanBright,
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                )
+                            }
                         }
 
                         Row(
@@ -129,6 +150,23 @@ fun MainScreen(
                                 )
                             }
 
+                            // YouTube Agent Button
+                            FilledTonalButton(
+                                onClick = { viewModel.selectTab(4) },
+                                colors = if (currentTab == 4) {
+                                    ButtonDefaults.filledTonalButtonColors(containerColor = androidx.compose.ui.graphics.Color(0xFFFF0033), contentColor = androidx.compose.ui.graphics.Color.White)
+                                } else {
+                                    ButtonDefaults.filledTonalButtonColors(containerColor = Slate800, contentColor = androidx.compose.ui.graphics.Color(0xFFFF4D4D))
+                                },
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.testTag("top_youtube_button")
+                            ) {
+                                Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(3.dp))
+                                Text("YT", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+
                             // Marketplace Button
                             FilledTonalButton(
                                 onClick = { viewModel.openMarketplace("Vše") },
@@ -166,6 +204,7 @@ fun MainScreen(
                     NavigationBarItem(
                         selected = currentTab == index,
                         onClick = { viewModel.selectTab(index) },
+                        alwaysShowLabel = false,
                         icon = {
                             Icon(
                                 imageVector = tab.icon,
@@ -175,14 +214,15 @@ fun MainScreen(
                         label = {
                             Text(
                                 text = tab.title,
-                                fontSize = 10.sp,
+                                fontSize = 9.sp,
+                                maxLines = 1,
                                 fontWeight = if (currentTab == index) FontWeight.Bold else FontWeight.Normal
                             )
                         },
                         colors = NavigationBarItemDefaults.colors(
                             selectedIconColor = Slate950,
-                            selectedTextColor = CyanBright,
-                            indicatorColor = CyanBright,
+                            selectedTextColor = if (index == 4) androidx.compose.ui.graphics.Color(0xFFFF0033) else CyanBright,
+                            indicatorColor = if (index == 4) androidx.compose.ui.graphics.Color(0xFFFF4D4D) else CyanBright,
                             unselectedIconColor = Slate400,
                             unselectedTextColor = Slate400
                         ),
@@ -203,8 +243,9 @@ fun MainScreen(
                 1 -> FilesScreen(viewModel = viewModel)
                 2 -> MarketplaceScreen(viewModel = viewModel)
                 3 -> InternetScreen(viewModel = viewModel)
-                4 -> SkillsMcpScreen(viewModel = viewModel)
-                5 -> PluginsSettingsScreen(viewModel = viewModel)
+                4 -> YouTubeAgentScreen(viewModel = viewModel)
+                5 -> SkillsMcpScreen(viewModel = viewModel)
+                6 -> PluginsSettingsScreen(viewModel = viewModel)
             }
         }
     }
