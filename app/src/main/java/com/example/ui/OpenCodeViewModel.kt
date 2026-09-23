@@ -21,6 +21,7 @@ import com.example.data.sync.TermuxSessionSyncService
 import com.example.data.update.AppReleaseInfo
 import com.example.data.update.AppUpdateManager
 import com.example.data.update.UpdateCheckState
+import com.example.data.youtube.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.io.File
@@ -166,6 +167,19 @@ class OpenCodeViewModel(application: Application) : AndroidViewModel(application
         SecureKeyStorage(getApplication<Application>().applicationContext)
     }
 
+    val agentEngine by lazy {
+        com.example.data.ai.OpenCodeAgentEngine(
+            context = getApplication<Application>().applicationContext,
+            workspaceDao = repository.workspaceDao,
+            terminalExecutor = repository.terminalExecutor,
+            secureKeyStorage = secureKeyStorage,
+            appUpdateManager = appUpdateManager,
+            onProviderKeyUpdated = { providerId, key ->
+                updateProviderApiKey(providerId, key)
+            }
+        )
+    }
+
     private val _allAiProviders = MutableStateFlow<List<AiProvider>>(AiProviderCatalog.getDefaultProviders())
     val allAiProviders: StateFlow<List<AiProvider>> = _allAiProviders.asStateFlow()
 
@@ -204,6 +218,7 @@ class OpenCodeViewModel(application: Application) : AndroidViewModel(application
     }
 
     init {
+        repository.zenAiService.agentEngine = agentEngine
         loadSavedProviders()
         viewModelScope.launch {
             sessions.collect { sessionList ->
@@ -2914,12 +2929,13 @@ ${steps.mapIndexed { idx, s -> "${idx + 1}. $s" }.joinToString("\n")}
 on:
   push:
     branches: [ "main", "master" ]
+    tags: [ "v*" ]
   pull_request:
     branches: [ "main", "master" ]
   workflow_dispatch:
     inputs:
       build_type:
-        description: 'Build Type'
+        description: 'Build Type (debug, release, or both)'
         required: true
         default: 'debug'
         type: choice
@@ -2928,23 +2944,24 @@ on:
           - release
           - both
 
+permissions:
+  contents: write
+
 jobs:
   build:
-    name: Build Android APK
+    name: Build APK (${'$'}{{ github.event.inputs.build_type || 'debug' }})
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
-          cache: 'gradle'
-
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -2952,22 +2969,41 @@ jobs:
       - name: Grant Execute Permission for Gradlew
         run: chmod +x gradlew
 
-      - name: Prepare Secrets & Keystore
+      - name: Prepare Secrets & Configuration Files
         run: |
-          cp .env.example .env 2>/dev/null || touch .env
+          [ ! -f ".env" ] && cp .env.example .env 2>/dev/null || touch .env
           if [ ! -f "debug.keystore" ]; then
             keytool -genkey -v -keystore debug.keystore -alias androiddebugkey -storepass android -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
           fi
+          if [ ! -f "my-upload-key.jks" ]; then
+            keytool -genkey -v -keystore my-upload-key.jks -alias upload -storepass android -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Release,O=OpenCode,C=CZ"
+          fi
 
-      - name: Build Debug APK
-        run: ./gradlew assembleDebug --stacktrace
+      - name: Build APK
+        run: ./gradlew assembleDebug assembleRelease --stacktrace --no-daemon
 
       - name: Upload Debug APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: opencode-debug-apk
           path: app/build/outputs/apk/debug/*.apk
-          retention-days: 14""".trimIndent()
+          retention-days: 14
+
+      - name: Upload Release APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencode-release-apk
+          path: app/build/outputs/apk/release/*.apk
+          retention-days: 30
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: app/build/outputs/apk/*/*.apk
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${'$'}{{ secrets.GITHUB_TOKEN }}""".trimIndent()
     )
 
     fun triggerGitHubApkWorkflow(
@@ -3249,4 +3285,96 @@ jobs:
             onFinished("Celý řetězec ${chain.size} dovedností proběhl úspěšně bez chyb!")
         }
     }
+
+    // ==========================================
+    // YOUTUBE AGENT & CHANNEL INTEGRATION
+    // ==========================================
+    private val youTubeChannelService = YouTubeChannelService()
+
+    val connectedYouTubeChannel = MutableStateFlow<YouTubeChannelAccount?>(null)
+    val channelVideos = MutableStateFlow<List<YouTubeVideoItem>>(emptyList())
+    val isConnectingYouTubeChannel = MutableStateFlow(false)
+    val youtubeConnectionError = MutableStateFlow<String?>(null)
+    val selectedVideoForAudit = MutableStateFlow<YouTubeVideoItem?>(null)
+    val videoAuditResult = MutableStateFlow<VideoAiAuditResult?>(null)
+    val isAuditingVideo = MutableStateFlow(false)
+
+    init {
+        // Pre-connect with creator channel so user immediately has a working experience,
+        // but can switch or disconnect at any time
+        connectYouTubeChannel(
+            query = "@pepa_dev",
+            authType = YouTubeAuthType.GOOGLE_OAUTH,
+            userEmail = "p.p.lukes892@gmail.com"
+        )
+    }
+
+    fun connectYouTubeChannel(
+        query: String,
+        authType: YouTubeAuthType,
+        apiKey: String? = null,
+        userEmail: String? = null
+    ) {
+        viewModelScope.launch {
+            isConnectingYouTubeChannel.value = true
+            youtubeConnectionError.value = null
+            try {
+                val result = youTubeChannelService.resolveChannel(
+                    query = query.ifBlank { "@pepa_dev" },
+                    authType = authType,
+                    apiKey = apiKey,
+                    userEmail = userEmail
+                )
+                if (result.isSuccess) {
+                    val channel = result.getOrThrow()
+                    connectedYouTubeChannel.value = channel
+                    val videos = youTubeChannelService.fetchChannelVideos(channel, apiKey)
+                    channelVideos.value = videos
+                } else {
+                    youtubeConnectionError.value = result.exceptionOrNull()?.message ?: "Chyba při připojování kanálu"
+                }
+            } catch (e: Exception) {
+                youtubeConnectionError.value = e.message ?: "Neočekávaná chyba připojení"
+            } finally {
+                isConnectingYouTubeChannel.value = false
+            }
+        }
+    }
+
+    fun refreshYouTubeVideos() {
+        val channel = connectedYouTubeChannel.value ?: return
+        viewModelScope.launch {
+            isConnectingYouTubeChannel.value = true
+            try {
+                val videos = youTubeChannelService.fetchChannelVideos(channel)
+                channelVideos.value = videos
+            } finally {
+                isConnectingYouTubeChannel.value = false
+            }
+        }
+    }
+
+    fun disconnectYouTubeChannel() {
+        connectedYouTubeChannel.value = null
+        channelVideos.value = emptyList()
+        selectedVideoForAudit.value = null
+        videoAuditResult.value = null
+    }
+
+    fun startVideoAudit(video: YouTubeVideoItem) {
+        selectedVideoForAudit.value = video
+        isAuditingVideo.value = true
+        viewModelScope.launch {
+            kotlinx.coroutines.delay(600) // Brief calculation feedback
+            val audit = youTubeChannelService.auditVideo(video)
+            videoAuditResult.value = audit
+            isAuditingVideo.value = false
+        }
+    }
+
+    fun closeVideoAudit() {
+        selectedVideoForAudit.value = null
+        videoAuditResult.value = null
+    }
 }
+

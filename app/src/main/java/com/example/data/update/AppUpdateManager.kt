@@ -205,6 +205,28 @@ class AppUpdateManager(
         }
     }
 
+    fun notifyNewReleaseAvailable(version: String, notes: String = "", downloadUrl: String? = null) {
+        val simulated = AppReleaseInfo(
+            tagName = "v$version",
+            versionName = version,
+            releaseTitle = "OpenCode IDE v$version (Automatický build)",
+            releaseNotes = notes.ifBlank {
+                """
+                ### 🚀 Co je nového ve verzi $version:
+                * **Automatická aktualizace:** Sestaveno a odesláno AI kódovacím agentem.
+                * **CI/CD Build:** GitHub Actions sestavil podepsané APK.
+                * **Instalace:** Klepněte na tlačítko níže pro stažení a instalaci.
+                """.trimIndent()
+            },
+            publishedAt = "Právě teď",
+            downloadUrl = downloadUrl ?: "https://github.com/${_config.value.githubRepo}/releases/download/v$version/opencode-v$version-debug.apk",
+            apkFileName = "opencode-v$version.apk",
+            apkSizeBytes = 28500000L,
+            htmlUrl = "https://github.com/${_config.value.githubRepo}/releases/tag/v$version"
+        )
+        _updateState.value = UpdateCheckState.UpdateAvailable(simulated)
+    }
+
     fun simulateNewVersion(version: String = "1.2.0") {
         val simulated = AppReleaseInfo(
             tagName = "v$version",

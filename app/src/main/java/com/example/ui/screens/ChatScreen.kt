@@ -304,13 +304,14 @@ fun ChatScreen(
                 .padding(horizontal = 12.dp, vertical = 4.dp)
         ) {
             val chips = listOf(
-                "/search Jetpack Compose M3",
+                "/release 1.3.0 'Nová aktualizace kódu'",
+                "/secret list",
+                "/update check",
+                "/edit AppConfig.json",
+                "/secret set GEMINI_API_KEY AIzaSy...",
                 "/terminal git status",
-                "/terminal ls",
-                "/terminal python scripts/script.py",
-                "Vysvětli architekturu projektu",
-                "Napiš Room entitu s DAO",
-                "Vytvoř vlastní MCP nástroj"
+                "/search Jetpack Compose M3",
+                "Vysvětli architekturu projektu"
             )
             chips.forEach { chipText ->
                 SuggestionChip(

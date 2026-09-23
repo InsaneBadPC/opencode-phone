@@ -35,6 +35,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.OpenCodeViewModel
+import com.example.ui.components.YouTubeChannelContentView
 import com.example.ui.components.YouTubeContentCalendarView
 import com.example.ui.components.YouTubeGrowthDashboardCard
 import com.example.ui.theme.*
@@ -355,9 +356,9 @@ Screenshot běžícího terminálu s popiskem: "Nahrávám video na zítra. Za 1
                             onClick = { selectedMainTab = 0 },
                             text = {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.TrendingUp, contentDescription = null, modifier = Modifier.size(15.dp), tint = if (selectedMainTab == 0) Color(0xFFFF4D4D) else Slate400)
+                                    Icon(Icons.Default.VideoLibrary, contentDescription = null, modifier = Modifier.size(15.dp), tint = if (selectedMainTab == 0) Color(0xFFFF4D4D) else Slate400)
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Růst & Strategie", fontSize = 11.sp, fontWeight = if (selectedMainTab == 0) FontWeight.Bold else FontWeight.Normal, color = if (selectedMainTab == 0) Slate100 else Slate400)
+                                    Text("Můj kanál & Obsah", fontSize = 11.sp, fontWeight = if (selectedMainTab == 0) FontWeight.Bold else FontWeight.Normal, color = if (selectedMainTab == 0) Slate100 else Slate400)
                                 }
                             }
                         )
@@ -366,9 +367,20 @@ Screenshot běžícího terminálu s popiskem: "Nahrávám video na zítra. Za 1
                             onClick = { selectedMainTab = 1 },
                             text = {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.CalendarMonth, contentDescription = null, modifier = Modifier.size(15.dp), tint = if (selectedMainTab == 1) Color(0xFFFF4D4D) else Slate400)
+                                    Icon(Icons.Default.TrendingUp, contentDescription = null, modifier = Modifier.size(15.dp), tint = if (selectedMainTab == 1) Color(0xFFFF4D4D) else Slate400)
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Content Kalendář", fontSize = 11.sp, fontWeight = if (selectedMainTab == 1) FontWeight.Bold else FontWeight.Normal, color = if (selectedMainTab == 1) Slate100 else Slate400)
+                                    Text("Růst & Strategie", fontSize = 11.sp, fontWeight = if (selectedMainTab == 1) FontWeight.Bold else FontWeight.Normal, color = if (selectedMainTab == 1) Slate100 else Slate400)
+                                }
+                            }
+                        )
+                        Tab(
+                            selected = selectedMainTab == 2,
+                            onClick = { selectedMainTab = 2 },
+                            text = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.CalendarMonth, contentDescription = null, modifier = Modifier.size(15.dp), tint = if (selectedMainTab == 2) Color(0xFFFF4D4D) else Slate400)
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Content Kalendář", fontSize = 11.sp, fontWeight = if (selectedMainTab == 2) FontWeight.Bold else FontWeight.Normal, color = if (selectedMainTab == 2) Slate100 else Slate400)
                                 }
                             }
                         )
@@ -378,15 +390,24 @@ Screenshot běžícího terminálu s popiskem: "Nahrávám video na zítra. Za 1
         },
         containerColor = Slate950
     ) { paddingValues ->
-        if (selectedMainTab == 0) {
-            LazyColumn(
-                modifier = modifier
-                    .fillMaxSize()
-                    .padding(paddingValues)
-                    .testTag("youtube_agent_screen"),
-                contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
+        when (selectedMainTab) {
+            0 -> {
+                YouTubeChannelContentView(
+                    viewModel = viewModel,
+                    modifier = modifier
+                        .fillMaxSize()
+                        .padding(paddingValues)
+                )
+            }
+            1 -> {
+                LazyColumn(
+                    modifier = modifier
+                        .fillMaxSize()
+                        .padding(paddingValues)
+                        .testTag("youtube_agent_screen"),
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
             // Hero Banner: Mission & Promise
             item {
                 Surface(
@@ -847,8 +868,9 @@ Screenshot běžícího terminálu s popiskem: "Nahrávám video na zítra. Za 1
                     }
                 }
             }
-        } // close LazyColumn
-    } else {
+        }
+    }
+    else -> {
         // Content Calendar View
         YouTubeContentCalendarView(
             viewModel = viewModel,
@@ -859,5 +881,6 @@ Screenshot běžícího terminálu s popiskem: "Nahrávám video na zítra. Za 1
                 .padding(16.dp)
         )
     }
+}
 }
 }

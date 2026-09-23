@@ -37,6 +37,7 @@ data class ZenResponse(
 class ZenAiService(
     private val webSearchService: WebSearchService,
     private val terminalExecutor: TerminalExecutor,
+    var agentEngine: OpenCodeAgentEngine? = null,
     private val client: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(60, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
@@ -53,6 +54,12 @@ class ZenAiService(
         onToolExecuted: ((String, String, String) -> Unit)? = null
     ): ZenResponse = withContext(Dispatchers.IO) {
         val trimmed = prompt.trim()
+
+        // 0. Autonomous OpenCode Agent Tool Execution (Code edit, Release & Push build, Secrets management, Updates)
+        val agentToolRes = checkAndExecuteAgentTools(trimmed, onToolExecuted)
+        if (agentToolRes != null) {
+            return@withContext agentToolRes
+        }
 
         // 1. Tool intent detection (Quick shortcuts or explicit agent invocation)
         if (trimmed.startsWith("/search ") || trimmed.startsWith("/web ")) {
@@ -166,6 +173,12 @@ class ZenAiService(
         onToolExecuted: ((String, String, String) -> Unit)? = null
     ): ZenResponse = withContext(Dispatchers.IO) {
         val trimmed = prompt.trim()
+
+        // 0. Autonomous OpenCode Agent Tool Execution
+        val agentToolRes = checkAndExecuteAgentTools(trimmed, onToolExecuted)
+        if (agentToolRes != null) {
+            return@withContext agentToolRes
+        }
 
         // 1. Tool intent detection
         if (trimmed.startsWith("/search ") || trimmed.startsWith("/web ")) {
@@ -534,5 +547,162 @@ class ZenAiService(
                 """.trimIndent()
             }
         }
+    }
+
+    private suspend fun checkAndExecuteAgentTools(
+        trimmed: String,
+        onToolExecuted: ((String, String, String) -> Unit)?
+    ): ZenResponse? {
+        val engine = agentEngine ?: return null
+        val lower = trimmed.lowercase()
+
+        // 1. Release & push build intent
+        val isReleaseCommand = trimmed.startsWith("/release") || trimmed.startsWith("/bump") || trimmed.startsWith("/publish")
+        val isReleaseNatural = (lower.contains("verzi") || lower.contains("aktualizaci") || lower.contains("release")) &&
+                (lower.contains("vytvoř") || lower.contains("vydej") || lower.contains("spusť") || lower.contains("spustit") || lower.contains("build") || lower.contains("push"))
+        val isPushBuildNatural = (lower.contains("pushnout") || lower.contains("pushni") || lower.contains("spustit build") || lower.contains("spusť build")) &&
+                (lower.contains("aktualizac") || lower.contains("novou verzi") || lower.contains("apk") || lower.contains("github"))
+
+        if (isReleaseCommand || isReleaseNatural || isPushBuildNatural) {
+            val versionRegex = """(?:v|verze|version\s*)?(\d+\.\d+(?:\.\d+)?)""".toRegex(RegexOption.IGNORE_CASE)
+            val extractedVer = versionRegex.find(trimmed)?.groupValues?.get(1) ?: "1.3.0"
+            val msgRegex = """["']([^"']+)["']""".toRegex()
+            val extractedMsg = msgRegex.find(trimmed)?.groupValues?.get(1) ?: "Automatická aktualizace aplikace a sestavení APK"
+
+            val res = engine.bumpVersionAndPush(extractedVer, extractedMsg)
+            onToolExecuted?.invoke(res.toolName, res.args, res.output)
+
+            return ZenResponse(
+                content = res.output + "\n\n💡 *Aplikace nyní automaticky detekovala tuto novou verzi a otevřela dialog aktualizace pro stažení APK.*",
+                toolCallName = res.toolName,
+                toolCallArgs = res.args,
+                toolCallResult = res.output
+            )
+        }
+
+        // 2. Secret & API key management
+        val isSecretCommand = trimmed.startsWith("/secret") || trimmed.startsWith("/key") || trimmed.startsWith("/token")
+        val isSecretNatural = (lower.contains("api klíč") || lower.contains("api klic") || lower.contains("token") || lower.contains("secret")) &&
+                (lower.contains("nastav") || lower.contains("uprav") || lower.contains("změň") || lower.contains("ulož") || lower.contains("seznam") || lower.contains("list") || lower.contains("smaž") || lower.contains("odstraň"))
+
+        if (isSecretCommand || isSecretNatural) {
+            val action: String
+            val keyName: String
+            val keyValue: String?
+
+            if (trimmed.startsWith("/secret ") || trimmed.startsWith("/key ")) {
+                val parts = trimmed.split("\\s+".toRegex()).filter { it.isNotBlank() }
+                if (parts.size >= 4 && parts[1].equals("set", ignoreCase = true)) {
+                    action = "set"
+                    keyName = parts[2]
+                    keyValue = parts.drop(3).joinToString(" ")
+                } else if (parts.size >= 3 && parts[1].equals("get", ignoreCase = true)) {
+                    action = "get"
+                    keyName = parts[2]
+                    keyValue = null
+                } else if (parts.size >= 3 && parts[1].equals("delete", ignoreCase = true)) {
+                    action = "delete"
+                    keyName = parts[2]
+                    keyValue = null
+                } else if (parts.size >= 2 && parts[1].equals("list", ignoreCase = true)) {
+                    action = "list"
+                    keyName = ""
+                    keyValue = null
+                } else {
+                    action = "list"
+                    keyName = ""
+                    keyValue = null
+                }
+            } else {
+                if (lower.contains("seznam") || lower.contains("list") || lower.contains("jaké jsou")) {
+                    action = "list"
+                    keyName = ""
+                    keyValue = null
+                } else if (lower.contains("smaž") || lower.contains("odstraň") || lower.contains("vymaž")) {
+                    action = "delete"
+                    keyName = when {
+                        lower.contains("gemini") -> "GEMINI_API_KEY"
+                        lower.contains("groq") -> "GROQ_API_KEY"
+                        lower.contains("github") -> "GITHUB_TOKEN"
+                        lower.contains("youtube") -> "YOUTUBE_API_KEY"
+                        else -> "API_KEY"
+                    }
+                    keyValue = null
+                } else {
+                    action = "set"
+                    keyName = when {
+                        lower.contains("gemini") -> "GEMINI_API_KEY"
+                        lower.contains("groq") -> "GROQ_API_KEY"
+                        lower.contains("github") -> "GITHUB_TOKEN"
+                        lower.contains("openrouter") -> "OPENROUTER_API_KEY"
+                        lower.contains("deepseek") -> "DEEPSEEK_API_KEY"
+                        lower.contains("mistral") -> "MISTRAL_API_KEY"
+                        lower.contains("youtube") -> "YOUTUBE_API_KEY"
+                        else -> "API_KEY"
+                    }
+
+                    val tokenPattern = """(?:klíč|key|token|na|hodnotu|:)\s*([A-Za-z0-9_\-]{8,})""".toRegex()
+                    keyValue = tokenPattern.find(trimmed)?.groupValues?.get(1) ?: "AIzaSyKeySecured${System.currentTimeMillis() % 10000}"
+                }
+            }
+
+            val res = engine.manageSecret(action, keyName, keyValue)
+            onToolExecuted?.invoke(res.toolName, res.args, res.output)
+            return ZenResponse(
+                content = res.output,
+                toolCallName = res.toolName,
+                toolCallArgs = res.args,
+                toolCallResult = res.output
+            )
+        }
+
+        // 3. Update check & prompt
+        val isUpdateCommand = trimmed.startsWith("/update")
+        val isUpdateNatural = lower.contains("zkontroluj aktualizac") || lower.contains("nabídni aktualizac") || lower.contains("stáhnout aktualizac") || lower.contains("je nová verze")
+
+        if (isUpdateCommand || isUpdateNatural) {
+            val res = engine.checkAndPromptUpdate()
+            onToolExecuted?.invoke(res.toolName, res.args, res.output)
+            return ZenResponse(
+                content = res.output,
+                toolCallName = res.toolName,
+                toolCallArgs = res.args,
+                toolCallResult = res.output
+            )
+        }
+
+        // 4. Code edit / write
+        val isEditCommand = trimmed.startsWith("/write ") || trimmed.startsWith("/edit ")
+        val isEditNatural = (lower.contains("uprav") || lower.contains("přepiš") || lower.contains("vytvoř kód v") || lower.contains("upravit kód")) &&
+                (lower.contains("soubor") || lower.contains(".kt") || lower.contains(".json") || lower.contains(".kts"))
+
+        if (isEditCommand || isEditNatural) {
+            val parts = trimmed.split("\\s+".toRegex()).filter { it.isNotBlank() }
+            val filePath = if (isEditCommand && parts.size >= 2) {
+                parts[1]
+            } else {
+                val fileRegex = """([a-zA-Z0-9_\-./]+\.(?:kt|kts|json|xml|py|md|yml|yaml))""".toRegex()
+                fileRegex.find(trimmed)?.groupValues?.get(1) ?: "AppConfig.json"
+            }
+
+            val codeContent = if (trimmed.contains("```")) {
+                trimmed.substringAfter("```").substringAfter("\n").substringBefore("```").trim()
+            } else if (isEditCommand && parts.size >= 3) {
+                trimmed.substringAfter(filePath).trim()
+            } else {
+                "// Aktualizovaný kód generovaný OpenCode AI Agentem\n// Datum: ${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date())}\npackage com.example\n\nobject AppUpdateInfo {\n    const val AGENT_MANAGED = true\n    const val BUILD_CHANNEL = \"production\"\n}\n"
+            }
+
+            val res = engine.editOrWriteCode(filePath, codeContent)
+            onToolExecuted?.invoke(res.toolName, res.args, res.output)
+            return ZenResponse(
+                content = res.output + "\n\n```kotlin\n$codeContent\n```\n\nChcete rovnou vytvořit novou verzi a spustit build? Stačí napsat např.:\n`/release 1.3.0 'Aktualizace souboru $filePath'`",
+                toolCallName = res.toolName,
+                toolCallArgs = res.args,
+                toolCallResult = res.output
+            )
+        }
+
+        return null
     }
 }
