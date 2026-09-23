@@ -45,7 +45,14 @@ class YouTubeChannelService(
                 }
             }
 
-            // 2. Attempt real public scraping directly from YouTube for the channel handle/id
+            // 2. Attempt YouTube oEmbed API (reliable, JSON-based, minimal data)
+            val oembedResult = fetchFromOembedApi(cleanQuery, authType, userEmail)
+            if (oembedResult.isSuccess) {
+                val oembed = oembedResult.getOrThrow()
+                return@withContext Result.success(oembed)
+            }
+
+            // 3. Attempt real public scraping directly from YouTube for the channel handle/id
             val scrapedResult = scrapePublicYouTubeChannel(cleanQuery, authType, userEmail)
             if (scrapedResult.isSuccess) {
                 val scraped = scrapedResult.getOrThrow()
@@ -105,6 +112,61 @@ class YouTubeChannelService(
         return@withContext emptyList()
     }
 
+
+    private fun fetchFromOembedApi(
+        query: String,
+        authType: YouTubeAuthType,
+        userEmail: String?
+    ): Result<YouTubeChannelAccount> {
+        return try {
+            val handle = when {
+                query.startsWith("@") -> query
+                query.startsWith("UC") && query.length >= 22 -> query
+                else -> "@$query"
+            }
+            val channelUrl = "https://www.youtube.com/$handle"
+            val oembedUrl = "https://www.youtube.com/oembed?url=${channelUrl}&format=json"
+            val request = Request.Builder()
+                .url(oembedUrl)
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36")
+                .header("Accept", "application/json")
+                .build()
+            val response = client.newCall(request).execute()
+            if (!response.isSuccessful) {
+                return Result.failure(Exception("oEmbed HTTP ${response.code}"))
+            }
+            val body = response.body?.string() ?: return Result.failure(Exception("Empty oEmbed body"))
+            val json = JSONObject(body)
+            val title = json.optString("title", "")
+            val authorUrl = json.optString("author_url", "")
+            val thumbnailUrl = json.optString("thumbnail_url", "")
+            val customUrl = if (authorUrl.isNotBlank()) authorUrl else "https://youtube.com/$handle"
+            val extractedHandle = if (authorUrl.contains("/@")) {
+                authorUrl.substringAfterLast("/@").let { "@$it" }
+            } else {
+                handle
+            }
+
+            Result.success(
+                YouTubeChannelAccount(
+                    channelId = "oembed_$handle",
+                    handle = extractedHandle,
+                    title = title.ifBlank { handle.removePrefix("@").replace("_", " ").trim() },
+                    description = "Kanál připojen přes YouTube oEmbed API.",
+                    customUrl = customUrl,
+                    avatarUrl = thumbnailUrl,
+                    subscriberCount = 0L,
+                    videoCount = 0,
+                    viewCount = 0L,
+                    authType = authType,
+                    channelEmail = userEmail,
+                    isVerified = false
+                )
+            )
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
     private fun scrapePublicYouTubeChannel(
         query: String,
         authType: YouTubeAuthType,
@@ -120,7 +182,7 @@ class YouTubeChannelService(
 
             val request = Request.Builder()
                 .url(targetUrl)
-                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36")
                 .header("Accept-Language", "cs,en;q=0.9")
                 .build()
 

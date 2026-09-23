@@ -87,6 +87,7 @@ fun YouTubeChannelContentView(
             // NOT CONNECTED STATE: Allows entering ANY Google account & YouTube handle
             NotConnectedOnboardingCard(
                 currentGoogleAccount = currentGoogleAccount,
+                connectionError = connectionError,
                 onConnectClick = { showConnectDialog = true },
                 onDirectConnect = { email, handle ->
                     val cleanEmail = email.trim().ifBlank { "insanebad2@gmail.com" }
@@ -523,6 +524,7 @@ fun YouTubeChannelContentView(
 @Composable
 private fun NotConnectedOnboardingCard(
     currentGoogleAccount: String,
+    connectionError: String? = null,
     onConnectClick: () -> Unit,
     onDirectConnect: (email: String, handle: String) -> Unit,
     onAccountChange: (String) -> Unit
@@ -644,6 +646,31 @@ private fun NotConnectedOnboardingCard(
                 Icon(Icons.Default.Settings, contentDescription = null, tint = Slate400, modifier = Modifier.size(14.dp))
                 Spacer(modifier = Modifier.width(4.dp))
                 Text("Pokročilé nastavení (API klíč, kategorie, vlastní název)", fontSize = 11.sp, color = Slate400)
+            }
+
+            // Error display — shown when channel connection fails
+            if (!connectionError.isNullOrBlank()) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = Color(0xFFFF0033).copy(alpha = 0.1f),
+                    border = BorderStroke(1.dp, Color(0xFFFF0033))
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFFF6B6B), modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Nepodařilo se připojit kanál", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFF6B6B))
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(connectionError!!, fontSize = 11.sp, color = Slate300, lineHeight = 16.sp)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("Tipy:", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = AmberWarning)
+                        Text("• Zkontrolujte @handle (bez mezer, s @)", fontSize = 10.sp, color = Slate400, lineHeight = 14.sp)
+                        Text("• Zkuste Google OAuth v nastavení", fontSize = 10.sp, color = Slate400, lineHeight = 14.sp)
+                        Text("• YouTube blokuje scraping - použijte Data API v3 klíč", fontSize = 10.sp, color = Slate400, lineHeight = 14.sp)
+                    }
+                }
             }
         }
     }
