@@ -24,6 +24,8 @@ import com.example.data.update.UpdateCheckState
 import com.example.data.youtube.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.File
 import java.util.UUID
 
@@ -3291,6 +3293,10 @@ jobs:
     // ==========================================
     private val youTubeChannelService = YouTubeChannelService()
 
+    private val ytPrefs by lazy {
+        getApplication<Application>().getSharedPreferences("opencode_youtube_channel", Context.MODE_PRIVATE)
+    }
+
     val connectedYouTubeChannel = MutableStateFlow<YouTubeChannelAccount?>(null)
     val channelVideos = MutableStateFlow<List<YouTubeVideoItem>>(emptyList())
     val isConnectingYouTubeChannel = MutableStateFlow(false)
@@ -3300,36 +3306,155 @@ jobs:
     val isAuditingVideo = MutableStateFlow(false)
 
     init {
-        // Pre-connect with creator channel so user immediately has a working experience,
-        // but can switch or disconnect at any time
-        connectYouTubeChannel(
-            query = "@pepa_dev",
-            authType = YouTubeAuthType.GOOGLE_OAUTH,
-            userEmail = "p.p.lukes892@gmail.com"
-        )
+        // Load user's saved channel if previously connected; otherwise keep null so user can connect their actual channel
+        loadSavedYouTubeChannel()
+    }
+
+    private fun loadSavedYouTubeChannel() {
+        try {
+            val channelJsonStr = ytPrefs.getString("saved_channel", null) ?: return
+            val json = JSONObject(channelJsonStr)
+            val channel = YouTubeChannelAccount(
+                channelId = json.getString("channelId"),
+                handle = json.getString("handle"),
+                title = json.getString("title"),
+                description = json.optString("description", ""),
+                customUrl = json.optString("customUrl", ""),
+                avatarUrl = json.optString("avatarUrl", ""),
+                bannerUrl = json.optString("bannerUrl", null),
+                subscriberCount = json.optLong("subscriberCount", 0L),
+                videoCount = json.optInt("videoCount", 0),
+                viewCount = json.optLong("viewCount", 0L),
+                authType = try { YouTubeAuthType.valueOf(json.optString("authType", "GOOGLE_OAUTH")) } catch (_: Exception) { YouTubeAuthType.GOOGLE_OAUTH },
+                connectedAt = json.optLong("connectedAt", System.currentTimeMillis()),
+                channelEmail = json.optString("channelEmail", null),
+                isVerified = json.optBoolean("isVerified", true)
+            )
+            connectedYouTubeChannel.value = channel
+
+            val videosJsonStr = ytPrefs.getString("saved_videos", null)
+            if (!videosJsonStr.isNullOrBlank()) {
+                val array = JSONArray(videosJsonStr)
+                val list = mutableListOf<YouTubeVideoItem>()
+                for (i in 0 until array.length()) {
+                    val vJson = array.getJSONObject(i)
+                    val tagsArr = vJson.optJSONArray("tags")
+                    val tags = mutableListOf<String>()
+                    if (tagsArr != null) {
+                        for (t in 0 until tagsArr.length()) tags.add(tagsArr.getString(t))
+                    }
+                    list.add(
+                        YouTubeVideoItem(
+                            id = vJson.getString("id"),
+                            title = vJson.getString("title"),
+                            description = vJson.optString("description", ""),
+                            publishedAt = vJson.optString("publishedAt", "Nedávno"),
+                            thumbnailUrl = vJson.optString("thumbnailUrl", ""),
+                            duration = vJson.optString("duration", "10:00"),
+                            isShort = vJson.optBoolean("isShort", false),
+                            viewCount = vJson.optLong("viewCount", 0L),
+                            likeCount = vJson.optLong("likeCount", 0L),
+                            commentCount = vJson.optLong("commentCount", 0L),
+                            ctrPercent = vJson.optDouble("ctrPercent", 5.0).toFloat(),
+                            avgRetentionPercent = vJson.optDouble("avgRetentionPercent", 50.0).toFloat(),
+                            tags = tags,
+                            privacyStatus = vJson.optString("privacyStatus", "public"),
+                            aiHealthScore = vJson.optInt("aiHealthScore", 80),
+                            optimizationTips = emptyList()
+                        )
+                    )
+                }
+                channelVideos.value = list
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("OpenCodeViewModel", "Failed to load saved YouTube channel", e)
+        }
+    }
+
+    private fun persistYouTubeChannelState(channel: YouTubeChannelAccount?, videos: List<YouTubeVideoItem>) {
+        if (channel == null) {
+            ytPrefs.edit().clear().apply()
+            return
+        }
+        try {
+            val cJson = JSONObject().apply {
+                put("channelId", channel.channelId)
+                put("handle", channel.handle)
+                put("title", channel.title)
+                put("description", channel.description)
+                put("customUrl", channel.customUrl)
+                put("avatarUrl", channel.avatarUrl)
+                put("bannerUrl", channel.bannerUrl)
+                put("subscriberCount", channel.subscriberCount)
+                put("videoCount", channel.videoCount)
+                put("viewCount", channel.viewCount)
+                put("authType", channel.authType.name)
+                put("connectedAt", channel.connectedAt)
+                put("channelEmail", channel.channelEmail)
+                put("isVerified", channel.isVerified)
+            }
+            val vArray = JSONArray()
+            for (v in videos) {
+                val vJson = JSONObject().apply {
+                    put("id", v.id)
+                    put("title", v.title)
+                    put("description", v.description)
+                    put("publishedAt", v.publishedAt)
+                    put("thumbnailUrl", v.thumbnailUrl)
+                    put("duration", v.duration)
+                    put("isShort", v.isShort)
+                    put("viewCount", v.viewCount)
+                    put("likeCount", v.likeCount)
+                    put("commentCount", v.commentCount)
+                    put("ctrPercent", v.ctrPercent.toDouble())
+                    put("avgRetentionPercent", v.avgRetentionPercent.toDouble())
+                    put("tags", JSONArray(v.tags))
+                    put("privacyStatus", v.privacyStatus)
+                    put("aiHealthScore", v.aiHealthScore)
+                }
+                vArray.put(vJson)
+            }
+            ytPrefs.edit()
+                .putString("saved_channel", cJson.toString())
+                .putString("saved_videos", vArray.toString())
+                .apply()
+        } catch (e: Exception) {
+            android.util.Log.e("OpenCodeViewModel", "Failed to persist YouTube state", e)
+        }
     }
 
     fun connectYouTubeChannel(
         query: String,
         authType: YouTubeAuthType,
         apiKey: String? = null,
-        userEmail: String? = null
+        userEmail: String? = null,
+        customTitle: String? = null,
+        customSubscribers: Long? = null,
+        customViews: Long? = null,
+        customCategory: String? = null,
+        customDescription: String? = null
     ) {
         viewModelScope.launch {
             isConnectingYouTubeChannel.value = true
             youtubeConnectionError.value = null
             try {
                 val result = youTubeChannelService.resolveChannel(
-                    query = query.ifBlank { "@pepa_dev" },
+                    query = query,
                     authType = authType,
                     apiKey = apiKey,
-                    userEmail = userEmail
+                    userEmail = userEmail ?: "p.p.lukes892@gmail.com",
+                    customTitle = customTitle,
+                    customSubscribers = customSubscribers,
+                    customViews = customViews,
+                    customCategory = customCategory,
+                    customDescription = customDescription
                 )
                 if (result.isSuccess) {
                     val channel = result.getOrThrow()
                     connectedYouTubeChannel.value = channel
                     val videos = youTubeChannelService.fetchChannelVideos(channel, apiKey)
                     channelVideos.value = videos
+                    persistYouTubeChannelState(channel, videos)
                 } else {
                     youtubeConnectionError.value = result.exceptionOrNull()?.message ?: "Chyba při připojování kanálu"
                 }
@@ -3341,6 +3466,95 @@ jobs:
         }
     }
 
+    fun addCustomVideo(
+        title: String,
+        urlOrId: String,
+        duration: String,
+        isShort: Boolean,
+        views: Long,
+        likes: Long,
+        ctr: Float,
+        tags: List<String> = emptyList()
+    ) {
+        val currentChannel = connectedYouTubeChannel.value ?: return
+        val cleanId = urlOrId.trim()
+            .removePrefix("https://youtu.be/")
+            .removePrefix("https://www.youtube.com/watch?v=")
+            .removePrefix("https://youtube.com/watch?v=")
+            .removePrefix("https://youtube.com/shorts/")
+            .removePrefix("https://www.youtube.com/shorts/")
+            .takeIf { it.isNotBlank() } ?: "vid_${System.currentTimeMillis()}"
+
+        val calculatedHealth = when {
+            ctr > 8.0f -> 92
+            ctr > 5.5f -> 85
+            ctr > 4.0f -> 72
+            else -> 55
+        }
+
+        val newVideo = YouTubeVideoItem(
+            id = cleanId,
+            title = title.trim().ifBlank { "Nové video" },
+            description = "Oficiální video z kanálu ${currentChannel.title}",
+            publishedAt = "Dnes",
+            thumbnailUrl = if (cleanId.length in 10..12 && !cleanId.startsWith("vid_")) {
+                "https://img.youtube.com/vi/$cleanId/hqdefault.jpg"
+            } else {
+                "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=400&auto=format&fit=crop&q=80"
+            },
+            duration = duration.ifBlank { if (isShort) "0:45" else "12:00" },
+            isShort = isShort,
+            viewCount = views.coerceAtLeast(0L),
+            likeCount = likes.coerceAtLeast(0L),
+            commentCount = (likes / 10).coerceAtLeast(1L),
+            ctrPercent = ctr.coerceIn(0.1f, 30.0f),
+            avgRetentionPercent = if (isShort) 82.0f else 52.0f,
+            tags = tags.ifEmpty { listOf(currentChannel.title.lowercase(), "youtube") },
+            privacyStatus = "public",
+            aiHealthScore = calculatedHealth,
+            optimizationTips = listOf(
+                "Vaše reálné video připravené pro AI audit a růst algoritmu."
+            )
+        )
+
+        val updatedVideos = listOf(newVideo) + channelVideos.value
+        val updatedChannel = currentChannel.copy(
+            videoCount = updatedVideos.size,
+            viewCount = currentChannel.viewCount + views
+        )
+        connectedYouTubeChannel.value = updatedChannel
+        channelVideos.value = updatedVideos
+        persistYouTubeChannelState(updatedChannel, updatedVideos)
+    }
+
+    fun deleteCustomVideo(videoId: String) {
+        val currentChannel = connectedYouTubeChannel.value ?: return
+        val updatedVideos = channelVideos.value.filterNot { it.id == videoId }
+        val updatedChannel = currentChannel.copy(videoCount = updatedVideos.size)
+        connectedYouTubeChannel.value = updatedChannel
+        channelVideos.value = updatedVideos
+        persistYouTubeChannelState(updatedChannel, updatedVideos)
+    }
+
+    fun updateChannelProfile(
+        title: String,
+        handle: String,
+        subscriberCount: Long,
+        description: String
+    ) {
+        val currentChannel = connectedYouTubeChannel.value ?: return
+        val cleanHandle = if (handle.startsWith("@")) handle else "@$handle"
+        val updatedChannel = currentChannel.copy(
+            title = title.trim().ifBlank { currentChannel.title },
+            handle = cleanHandle.ifBlank { currentChannel.handle },
+            subscriberCount = subscriberCount,
+            description = description.trim().ifBlank { currentChannel.description },
+            customUrl = "https://youtube.com/$cleanHandle"
+        )
+        connectedYouTubeChannel.value = updatedChannel
+        persistYouTubeChannelState(updatedChannel, channelVideos.value)
+    }
+
     fun refreshYouTubeVideos() {
         val channel = connectedYouTubeChannel.value ?: return
         viewModelScope.launch {
@@ -3348,6 +3562,7 @@ jobs:
             try {
                 val videos = youTubeChannelService.fetchChannelVideos(channel)
                 channelVideos.value = videos
+                persistYouTubeChannelState(channel, videos)
             } finally {
                 isConnectingYouTubeChannel.value = false
             }
@@ -3359,6 +3574,7 @@ jobs:
         channelVideos.value = emptyList()
         selectedVideoForAudit.value = null
         videoAuditResult.value = null
+        persistYouTubeChannelState(null, emptyList())
     }
 
     fun startVideoAudit(video: YouTubeVideoItem) {
