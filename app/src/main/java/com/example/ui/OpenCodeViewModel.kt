@@ -3299,7 +3299,9 @@ jobs:
 
     val connectedYouTubeChannel = MutableStateFlow<YouTubeChannelAccount?>(null)
     val channelVideos = MutableStateFlow<List<YouTubeVideoItem>>(emptyList())
-    val currentGoogleAccount = MutableStateFlow<String>(ytPrefs.getString("saved_google_email", "") ?: "")
+    val currentGoogleAccount = MutableStateFlow<String>(
+        ytPrefs.getString("saved_google_email", null)?.ifBlank { null } ?: "insanebad2@gmail.com"
+    )
     val isConnectingYouTubeChannel = MutableStateFlow(false)
     val youtubeConnectionError = MutableStateFlow<String?>(null)
     val selectedVideoForAudit = MutableStateFlow<YouTubeVideoItem?>(null)

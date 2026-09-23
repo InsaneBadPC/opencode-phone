@@ -88,9 +88,19 @@ fun YouTubeChannelContentView(
             NotConnectedOnboardingCard(
                 currentGoogleAccount = currentGoogleAccount,
                 onConnectClick = { showConnectDialog = true },
+                onDirectConnect = { email, handle ->
+                    val cleanEmail = email.trim().ifBlank { "insanebad2@gmail.com" }
+                    val finalQuery = handle.trim().ifBlank { "@" + cleanEmail.substringBefore("@") }
+                    viewModel.setGoogleAccount(cleanEmail)
+                    viewModel.connectYouTubeChannel(
+                        query = finalQuery,
+                        authType = YouTubeAuthType.GOOGLE_OAUTH,
+                        userEmail = cleanEmail
+                    )
+                    Toast.makeText(context, "Připojuji YouTube kanál pro $cleanEmail...", Toast.LENGTH_SHORT).show()
+                },
                 onAccountChange = { newEmail ->
                     viewModel.setGoogleAccount(newEmail)
-                    Toast.makeText(context, "Google účet nastaven na: $newEmail", Toast.LENGTH_SHORT).show()
                 }
             )
         } else {
@@ -514,10 +524,12 @@ fun YouTubeChannelContentView(
 private fun NotConnectedOnboardingCard(
     currentGoogleAccount: String,
     onConnectClick: () -> Unit,
+    onDirectConnect: (email: String, handle: String) -> Unit,
     onAccountChange: (String) -> Unit
 ) {
     val youtubeRed = Color(0xFFFF0033)
     var emailInput by remember(currentGoogleAccount) { mutableStateOf(currentGoogleAccount) }
+    var handleInput by remember { mutableStateOf("") }
 
     Card(
         shape = RoundedCornerShape(16.dp),
@@ -526,13 +538,13 @@ private fun NotConnectedOnboardingCard(
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(
-            modifier = Modifier.padding(24.dp),
+            modifier = Modifier.padding(20.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Box(
                 modifier = Modifier
-                    .size(64.dp)
-                    .clip(RoundedCornerShape(18.dp))
+                    .size(60.dp)
+                    .clip(RoundedCornerShape(16.dp))
                     .background(youtubeRed.copy(alpha = 0.15f)),
                 contentAlignment = Alignment.Center
             ) {
@@ -540,11 +552,11 @@ private fun NotConnectedOnboardingCard(
                     imageVector = Icons.Default.AccountCircle,
                     contentDescription = null,
                     tint = youtubeRed,
-                    modifier = Modifier.size(40.dp)
+                    modifier = Modifier.size(36.dp)
                 )
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
             Text(
                 text = "Připojte svůj YouTube kanál",
@@ -554,16 +566,16 @@ private fun NotConnectedOnboardingCard(
                 textAlign = TextAlign.Center
             )
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(6.dp))
 
             Text(
-                text = "Můžete přihlásit jakýkoliv Google účet nebo zadat veřejný odkaz na váš YouTube kanál. Aplikace načte vaše reálná data a umožní přesný AI audit vašich videí.",
+                text = "Kanál bude spárován s vaším Google účtem. Zadejte váš @handle, odkaz na kanál nebo ID a aplikace načte vaše skutečná videa pro AI audit.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = Slate400,
                 textAlign = TextAlign.Center
             )
 
-            Spacer(modifier = Modifier.height(18.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             // Editable Google Account field
             OutlinedTextField(
@@ -573,7 +585,7 @@ private fun NotConnectedOnboardingCard(
                     onAccountChange(it)
                 },
                 label = { Text("Váš Google účet / E-mail") },
-                placeholder = { Text("např. mujucet@gmail.com") },
+                placeholder = { Text("insanebad2@gmail.com") },
                 leadingIcon = {
                     Icon(Icons.Default.AccountCircle, contentDescription = null, tint = CyanBright)
                 },
@@ -585,17 +597,53 @@ private fun NotConnectedOnboardingCard(
                 )
             )
 
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Handle / Channel Link input field
+            OutlinedTextField(
+                value = handleInput,
+                onValueChange = { handleInput = it },
+                label = { Text("YouTube @handle, odkaz na kanál nebo ID") },
+                placeholder = { Text("@" + emailInput.substringBefore("@").ifBlank { "insanebad2" }) },
+                leadingIcon = {
+                    Icon(Icons.Default.Link, contentDescription = null, tint = youtubeRed)
+                },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = youtubeRed,
+                    unfocusedBorderColor = Slate700
+                )
+            )
+
             Spacer(modifier = Modifier.height(16.dp))
 
             Button(
-                onClick = onConnectClick,
+                onClick = {
+                    onDirectConnect(emailInput, handleInput)
+                },
                 colors = ButtonDefaults.buttonColors(containerColor = youtubeRed),
                 shape = RoundedCornerShape(10.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Icon(Icons.Default.Login, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("🚀 Připojit kanál k tomuto účtu", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                Text(
+                    text = "🚀 Připojit kanál pro $emailInput",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            TextButton(
+                onClick = onConnectClick,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Default.Settings, contentDescription = null, tint = Slate400, modifier = Modifier.size(14.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Pokročilé nastavení (API klíč, kategorie, vlastní název)", fontSize = 11.sp, color = Slate400)
             }
         }
     }
@@ -948,7 +996,7 @@ private fun ConnectChannelDialog(
                     value = channelHandleInput,
                     onValueChange = { channelHandleInput = it },
                     label = { Text("YouTube @handle, link nebo ID kanálu *") },
-                    placeholder = { Text("@muj_kanal nebo https://youtube.com/@...") },
+                    placeholder = { Text("@" + googleEmailInput.substringBefore("@").ifBlank { "insanebad2" }) },
                     leadingIcon = {
                         Icon(Icons.Default.Link, contentDescription = null, tint = youtubeRed)
                     },
