@@ -3299,6 +3299,7 @@ jobs:
 
     val connectedYouTubeChannel = MutableStateFlow<YouTubeChannelAccount?>(null)
     val channelVideos = MutableStateFlow<List<YouTubeVideoItem>>(emptyList())
+    val currentGoogleAccount = MutableStateFlow<String>(ytPrefs.getString("saved_google_email", "") ?: "")
     val isConnectingYouTubeChannel = MutableStateFlow(false)
     val youtubeConnectionError = MutableStateFlow<String?>(null)
     val selectedVideoForAudit = MutableStateFlow<YouTubeVideoItem?>(null)
@@ -3308,6 +3309,17 @@ jobs:
     init {
         // Load user's saved channel if previously connected; otherwise keep null so user can connect their actual channel
         loadSavedYouTubeChannel()
+    }
+
+    fun setGoogleAccount(email: String) {
+        val clean = email.trim()
+        currentGoogleAccount.value = clean
+        ytPrefs.edit().putString("saved_google_email", clean).apply()
+    }
+
+    fun switchGoogleAccount(newEmail: String) {
+        disconnectYouTubeChannel()
+        setGoogleAccount(newEmail)
     }
 
     private fun loadSavedYouTubeChannel() {
@@ -3331,6 +3343,9 @@ jobs:
                 isVerified = json.optBoolean("isVerified", true)
             )
             connectedYouTubeChannel.value = channel
+            if (!channel.channelEmail.isNullOrBlank()) {
+                currentGoogleAccount.value = channel.channelEmail
+            }
 
             val videosJsonStr = ytPrefs.getString("saved_videos", null)
             if (!videosJsonStr.isNullOrBlank()) {
@@ -3373,7 +3388,7 @@ jobs:
 
     private fun persistYouTubeChannelState(channel: YouTubeChannelAccount?, videos: List<YouTubeVideoItem>) {
         if (channel == null) {
-            ytPrefs.edit().clear().apply()
+            ytPrefs.edit().remove("saved_channel").remove("saved_videos").apply()
             return
         }
         try {
@@ -3414,10 +3429,13 @@ jobs:
                 }
                 vArray.put(vJson)
             }
-            ytPrefs.edit()
+            val editor = ytPrefs.edit()
                 .putString("saved_channel", cJson.toString())
                 .putString("saved_videos", vArray.toString())
-                .apply()
+            if (!channel.channelEmail.isNullOrBlank()) {
+                editor.putString("saved_google_email", channel.channelEmail)
+            }
+            editor.apply()
         } catch (e: Exception) {
             android.util.Log.e("OpenCodeViewModel", "Failed to persist YouTube state", e)
         }
@@ -3438,11 +3456,16 @@ jobs:
             isConnectingYouTubeChannel.value = true
             youtubeConnectionError.value = null
             try {
+                val resolvedEmail = userEmail?.trim()?.ifBlank { null } ?: currentGoogleAccount.value.ifBlank { null }
+                if (!resolvedEmail.isNullOrBlank()) {
+                    setGoogleAccount(resolvedEmail)
+                }
+
                 val result = youTubeChannelService.resolveChannel(
                     query = query,
                     authType = authType,
                     apiKey = apiKey,
-                    userEmail = userEmail ?: "p.p.lukes892@gmail.com",
+                    userEmail = resolvedEmail,
                     customTitle = customTitle,
                     customSubscribers = customSubscribers,
                     customViews = customViews,

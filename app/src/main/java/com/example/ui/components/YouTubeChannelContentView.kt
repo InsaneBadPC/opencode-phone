@@ -50,7 +50,8 @@ fun YouTubeChannelContentView(
     val clipboardManager = LocalClipboardManager.current
 
     val connectedChannel by viewModel.connectedYouTubeChannel.collectAsStateWithLifecycle()
-    val videos by viewModel.channelVideos.collectAsStateWithLifecycle()
+    val channelVideos by viewModel.channelVideos.collectAsStateWithLifecycle()
+    val currentGoogleAccount by viewModel.currentGoogleAccount.collectAsStateWithLifecycle()
     val isConnecting by viewModel.isConnectingYouTubeChannel.collectAsStateWithLifecycle()
     val connectionError by viewModel.youtubeConnectionError.collectAsStateWithLifecycle()
     val selectedVideoForAudit by viewModel.selectedVideoForAudit.collectAsStateWithLifecycle()
@@ -60,18 +61,19 @@ fun YouTubeChannelContentView(
     var showConnectDialog by remember { mutableStateOf(false) }
     var showAddVideoDialog by remember { mutableStateOf(false) }
     var showEditChannelDialog by remember { mutableStateOf(false) }
+    var showSwitchAccountDialog by remember { mutableStateOf(false) }
     var selectedFilter by remember { mutableStateOf(VideoFilterCategory.ALL) }
 
     val youtubeRed = Color(0xFFFF0033)
 
     // Filter videos based on selection
-    val filteredVideos = remember(videos, selectedFilter) {
+    val filteredVideos = remember(channelVideos, selectedFilter) {
         when (selectedFilter) {
-            VideoFilterCategory.ALL -> videos
-            VideoFilterCategory.LONG -> videos.filter { !it.isShort }
-            VideoFilterCategory.SHORTS -> videos.filter { it.isShort }
-            VideoFilterCategory.LOW_CTR -> videos.filter { it.ctrPercent < 5.0f }
-            VideoFilterCategory.TOP_PERFORMING -> videos.sortedByDescending { it.viewCount }
+            VideoFilterCategory.ALL -> channelVideos
+            VideoFilterCategory.LONG -> channelVideos.filter { !it.isShort }
+            VideoFilterCategory.SHORTS -> channelVideos.filter { it.isShort }
+            VideoFilterCategory.LOW_CTR -> channelVideos.filter { it.ctrPercent < 5.0f }
+            VideoFilterCategory.TOP_PERFORMING -> channelVideos.sortedByDescending { it.viewCount }
         }
     }
 
@@ -82,10 +84,14 @@ fun YouTubeChannelContentView(
             .testTag("youtube_channel_content_view")
     ) {
         if (connectedChannel == null) {
-            // NOT CONNECTED STATE: Dedicated Connect Card
+            // NOT CONNECTED STATE: Allows entering ANY Google account & YouTube handle
             NotConnectedOnboardingCard(
+                currentGoogleAccount = currentGoogleAccount,
                 onConnectClick = { showConnectDialog = true },
-                userEmail = "p.p.lukes892@gmail.com"
+                onAccountChange = { newEmail ->
+                    viewModel.setGoogleAccount(newEmail)
+                    Toast.makeText(context, "Google účet nastaven na: $newEmail", Toast.LENGTH_SHORT).show()
+                }
             )
         } else {
             val channel = connectedChannel!!
@@ -134,30 +140,46 @@ fun YouTubeChannelContentView(
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Icon(
                                         imageVector = Icons.Default.CheckCircle,
-                                        contentDescription = "Ověřený účet",
+                                        contentDescription = "Ověřený kanál",
                                         tint = CyanBright,
                                         modifier = Modifier.size(16.dp)
                                     )
                                 }
 
                                 Text(
-                                    text = "${channel.handle} • ${channel.channelEmail ?: "Google Account"}",
+                                    text = "${channel.handle} • ${channel.channelEmail ?: "Google účet"}",
                                     fontSize = 11.sp,
                                     color = Slate400
                                 )
 
-                                Surface(
-                                    shape = RoundedCornerShape(4.dp),
-                                    color = EmeraldSuccess.copy(alpha = 0.15f),
-                                    border = BorderStroke(0.5.dp, EmeraldSuccess),
-                                    modifier = Modifier.padding(top = 4.dp)
+                                Row(
+                                    modifier = Modifier.padding(top = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
+                                    Surface(
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = EmeraldSuccess.copy(alpha = 0.15f),
+                                        border = BorderStroke(0.5.dp, EmeraldSuccess)
+                                    ) {
+                                        Text(
+                                            text = "● ${channel.authType.label}",
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = EmeraldBright,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+
+                                    // Switch Account button right in header
                                     Text(
-                                        text = "● ${channel.authType.label}",
-                                        fontSize = 9.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = EmeraldBright,
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        text = "Změnit účet",
+                                        fontSize = 10.sp,
+                                        color = CyanBright,
+                                        fontWeight = FontWeight.SemiBold,
+                                        modifier = Modifier
+                                            .clickable { showSwitchAccountDialog = true }
+                                            .padding(2.dp)
                                     )
                                 }
                             }
@@ -203,29 +225,29 @@ fun YouTubeChannelContentView(
 
                     Spacer(modifier = Modifier.height(14.dp))
 
-                    // Channel Statistics Pills
+                    // Channel Statistics
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         StatTile(
                             label = "Odběratelé",
-                            value = "${channel.subscriberCount}",
-                            sub = "Aktivní komunita",
+                            value = if (channel.subscriberCount > 0) "${channel.subscriberCount}" else "Načítá se",
+                            sub = if (channel.subscriberCount > 0) "Skuteční odběratelé" else "Z YouTube",
                             subColor = EmeraldBright,
                             modifier = Modifier.weight(1f)
                         )
                         StatTile(
-                            label = "Celková zhlédnutí",
-                            value = "${channel.viewCount}",
-                            sub = "${videos.size} videí v appce",
+                            label = "Videa v seznamu",
+                            value = "${channelVideos.size}",
+                            sub = if (channelVideos.isNotEmpty()) "Skutečná videa" else "Zatím prázdné",
                             subColor = Slate400,
                             modifier = Modifier.weight(1f)
                         )
                         StatTile(
-                            label = "Zdraví kanálu",
-                            value = "94%",
-                            sub = "Připraveno pro růst",
+                            label = "Stav AI Agenta",
+                            value = "Aktivní",
+                            sub = "Připraven k auditu",
                             subColor = CyanBright,
                             modifier = Modifier.weight(1f)
                         )
@@ -233,7 +255,7 @@ fun YouTubeChannelContentView(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // Action buttons (Add Video, Refresh, Edit)
+                    // Action buttons
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -250,7 +272,10 @@ fun YouTubeChannelContentView(
                         }
 
                         Button(
-                            onClick = { viewModel.refreshYouTubeVideos() },
+                            onClick = {
+                                viewModel.refreshYouTubeVideos()
+                                Toast.makeText(context, "Aktualizuji data z YouTube...", Toast.LENGTH_SHORT).show()
+                            },
                             enabled = !isConnecting,
                             colors = ButtonDefaults.buttonColors(containerColor = Slate800),
                             shape = RoundedCornerShape(8.dp),
@@ -287,7 +312,7 @@ fun YouTubeChannelContentView(
                     Icon(Icons.Default.VideoLibrary, contentDescription = null, tint = youtubeRed, modifier = Modifier.size(20.dp))
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Váš nahraný obsah (${videos.size})",
+                        text = "Váš nahraný obsah (${channelVideos.size})",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = Slate100
@@ -331,34 +356,46 @@ fun YouTubeChannelContentView(
                     border = BorderStroke(1.dp, Slate800),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 16.dp)
+                        .padding(vertical = 12.dp)
                 ) {
                     Column(
                         modifier = Modifier.padding(24.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Icon(Icons.Default.PlayCircleOutline, contentDescription = null, tint = Slate500, modifier = Modifier.size(44.dp))
+                        Icon(Icons.Default.VideoLibrary, contentDescription = null, tint = Slate500, modifier = Modifier.size(44.dp))
                         Spacer(modifier = Modifier.height(10.dp))
                         Text(
-                            text = "Zatím zde nejsou žádná videa pro tento filtr",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold,
+                            text = "Zatím zde nejsou žádná videa pro tento kanál",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
                             color = Slate200
                         )
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            text = "Klikněte na „Přidat mé video“ pro vložení odkazu nebo názvu vašeho videa z YouTube.",
-                            fontSize = 11.sp,
+                            text = "Vložte odkaz nebo název vašeho videa z YouTube pomocí tlačítka níže. Žádné vymyšlené texty – analyzujeme výhradně váš skutečný obsah.",
+                            fontSize = 12.sp,
                             color = Slate400,
                             textAlign = TextAlign.Center
                         )
-                        Spacer(modifier = Modifier.height(14.dp))
-                        Button(
-                            onClick = { showAddVideoDialog = true },
-                            colors = ButtonDefaults.buttonColors(containerColor = youtubeRed),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Text("Přidat mé video z YouTube")
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(
+                                onClick = { showAddVideoDialog = true },
+                                colors = ButtonDefaults.buttonColors(containerColor = youtubeRed),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Přidat mé video z YouTube")
+                            }
+                            OutlinedButton(
+                                onClick = { viewModel.refreshYouTubeVideos() },
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Načíst z YT")
+                            }
                         }
                     }
                 }
@@ -386,20 +423,34 @@ fun YouTubeChannelContentView(
     // CONNECT CHANNEL DIALOG
     if (showConnectDialog) {
         ConnectChannelDialog(
-            currentEmail = "p.p.lukes892@gmail.com",
+            initialEmail = currentGoogleAccount,
             onDismiss = { showConnectDialog = false },
-            onConnect = { query, authType, apiKey, customTitle, customSubscribers, customCategory ->
+            onConnect = { query, authType, apiKey, email, customTitle, customSubscribers, customCategory ->
                 viewModel.connectYouTubeChannel(
                     query = query,
                     authType = authType,
                     apiKey = apiKey,
-                    userEmail = "p.p.lukes892@gmail.com",
+                    userEmail = email,
                     customTitle = customTitle,
                     customSubscribers = customSubscribers,
                     customCategory = customCategory
                 )
                 showConnectDialog = false
-                Toast.makeText(context, "Kanál úspěšně připojen!", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Načítám data kanálu z YouTube...", Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
+
+    // SWITCH GOOGLE ACCOUNT DIALOG
+    if (showSwitchAccountDialog) {
+        SwitchGoogleAccountDialog(
+            currentEmail = currentGoogleAccount,
+            onDismiss = { showSwitchAccountDialog = false },
+            onAccountSelected = { newEmail ->
+                viewModel.switchGoogleAccount(newEmail)
+                showSwitchAccountDialog = false
+                showConnectDialog = true
+                Toast.makeText(context, "Přepnuto na účet: $newEmail", Toast.LENGTH_SHORT).show()
             }
         )
     }
@@ -461,10 +512,12 @@ fun YouTubeChannelContentView(
 
 @Composable
 private fun NotConnectedOnboardingCard(
+    currentGoogleAccount: String,
     onConnectClick: () -> Unit,
-    userEmail: String
+    onAccountChange: (String) -> Unit
 ) {
     val youtubeRed = Color(0xFFFF0033)
+    var emailInput by remember(currentGoogleAccount) { mutableStateOf(currentGoogleAccount) }
 
     Card(
         shape = RoundedCornerShape(16.dp),
@@ -504,35 +557,35 @@ private fun NotConnectedOnboardingCard(
             Spacer(modifier = Modifier.height(8.dp))
 
             Text(
-                text = "Propojte aplikaci s vaším skutečným účtem. Zadejte svůj kanál, spravujte svá videa, sledujte reálná čísla a nechte AI agenta provést detailní audit CTR, miniatur a titulků pro maximální růst.",
+                text = "Můžete přihlásit jakýkoliv Google účet nebo zadat veřejný odkaz na váš YouTube kanál. Aplikace načte vaše reálná data a umožní přesný AI audit vašich videí.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = Slate400,
                 textAlign = TextAlign.Center
             )
 
+            Spacer(modifier = Modifier.height(18.dp))
+
+            // Editable Google Account field
+            OutlinedTextField(
+                value = emailInput,
+                onValueChange = {
+                    emailInput = it
+                    onAccountChange(it)
+                },
+                label = { Text("Váš Google účet / E-mail") },
+                placeholder = { Text("např. mujucet@gmail.com") },
+                leadingIcon = {
+                    Icon(Icons.Default.AccountCircle, contentDescription = null, tint = CyanBright)
+                },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = CyanBright,
+                    unfocusedBorderColor = Slate700
+                )
+            )
+
             Spacer(modifier = Modifier.height(16.dp))
-
-            // User email badge
-            Surface(
-                shape = RoundedCornerShape(8.dp),
-                color = Slate800,
-                border = BorderStroke(1.dp, Slate700),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Default.VerifiedUser, contentDescription = null, tint = CyanBright, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Column {
-                        Text("Přihlášený Google účet:", fontSize = 10.sp, color = Slate400)
-                        Text(userEmail, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Slate100)
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(20.dp))
 
             Button(
                 onClick = onConnectClick,
@@ -542,10 +595,66 @@ private fun NotConnectedOnboardingCard(
             ) {
                 Icon(Icons.Default.Login, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("🚀 Připojit můj YouTube kanál", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                Text("🚀 Připojit kanál k tomuto účtu", fontWeight = FontWeight.Bold, fontSize = 14.sp)
             }
         }
     }
+}
+
+@Composable
+private fun SwitchGoogleAccountDialog(
+    currentEmail: String,
+    onDismiss: () -> Unit,
+    onAccountSelected: (String) -> Unit
+) {
+    var newEmailInput by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.SwitchAccount, contentDescription = null, tint = CyanBright)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Přihlásit jiný Google účet", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            }
+        },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = "Zadejte nový Google e-mail, ke kterému chcete YouTube agenta připojit:",
+                    fontSize = 12.sp,
+                    color = Slate300
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = newEmailInput,
+                    onValueChange = { newEmailInput = it },
+                    label = { Text("Nový Google E-mail") },
+                    placeholder = { Text("muj.novy.ucet@gmail.com") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (newEmailInput.isNotBlank()) {
+                        onAccountSelected(newEmailInput.trim())
+                    }
+                },
+                enabled = newEmailInput.isNotBlank(),
+                colors = ButtonDefaults.buttonColors(containerColor = CyanBright)
+            ) {
+                Text("Použít tento účet", color = Color.Black, fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Zrušit")
+            }
+        }
+    )
 }
 
 @Composable
@@ -759,21 +868,23 @@ private fun StatTile(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ConnectChannelDialog(
-    currentEmail: String,
+    initialEmail: String,
     onDismiss: () -> Unit,
     onConnect: (
         query: String,
         authType: YouTubeAuthType,
         apiKey: String?,
+        userEmail: String?,
         customTitle: String?,
         customSubscribers: Long?,
         customCategory: String?
     ) -> Unit
 ) {
     var selectedMethod by remember { mutableStateOf(YouTubeAuthType.GOOGLE_OAUTH) }
-    var channelNameInput by remember { mutableStateOf("Petr Lukeš") }
-    var channelHandleInput by remember { mutableStateOf("@pplukes892") }
-    var subscriberCountInput by remember { mutableStateOf("250") }
+    var googleEmailInput by remember { mutableStateOf(initialEmail) }
+    var channelHandleInput by remember { mutableStateOf("") }
+    var channelNameInput by remember { mutableStateOf("") }
+    var subscriberCountInput by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf("Tech & IT") }
     var apiKeyInput by remember { mutableStateOf("") }
 
@@ -793,7 +904,8 @@ private fun ConnectChannelDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(
                     text = "Způsob ověření účtu:",
@@ -801,8 +913,6 @@ private fun ConnectChannelDialog(
                     color = Slate300,
                     fontWeight = FontWeight.Medium
                 )
-
-                Spacer(modifier = Modifier.height(6.dp))
 
                 // Method Selector Tabs
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -821,60 +931,59 @@ private fun ConnectChannelDialog(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(14.dp))
-
-                if (selectedMethod == YouTubeAuthType.GOOGLE_OAUTH) {
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = Slate800,
-                        border = BorderStroke(1.dp, Slate700),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(modifier = Modifier.padding(10.dp)) {
-                            Text("Přihlášený Google účet:", fontSize = 10.sp, color = Slate400)
-                            Text(currentEmail, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Slate100)
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(10.dp))
-                }
-
+                // Google Account input field - fully editable by user
                 OutlinedTextField(
-                    value = channelNameInput,
-                    onValueChange = { channelNameInput = it },
-                    label = { Text("Název vašeho kanálu") },
-                    placeholder = { Text("např. Petr Lukeš nebo Tech Vlog") },
+                    value = googleEmailInput,
+                    onValueChange = { googleEmailInput = it },
+                    label = { Text("Google účet / E-mail") },
+                    placeholder = { Text("např. muj.ucet@gmail.com") },
+                    leadingIcon = {
+                        Icon(Icons.Default.AccountCircle, contentDescription = null, tint = CyanBright)
+                    },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true
                 )
-
-                Spacer(modifier = Modifier.height(8.dp))
 
                 OutlinedTextField(
                     value = channelHandleInput,
                     onValueChange = { channelHandleInput = it },
-                    label = { Text("Váš @handle nebo link kanálu") },
-                    placeholder = { Text("@pplukes892 nebo youtube.com/@lukes") },
+                    label = { Text("YouTube @handle, link nebo ID kanálu *") },
+                    placeholder = { Text("@muj_kanal nebo https://youtube.com/@...") },
+                    leadingIcon = {
+                        Icon(Icons.Default.Link, contentDescription = null, tint = youtubeRed)
+                    },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true
                 )
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Aplikace stáhne reálný název, avatar a skutečná nahraná videa přímo z YouTube.",
+                    fontSize = 10.sp,
+                    color = Slate400
+                )
+
+                OutlinedTextField(
+                    value = channelNameInput,
+                    onValueChange = { channelNameInput = it },
+                    label = { Text("Název kanálu (volitelné – načte se samo)") },
+                    placeholder = { Text("ponechte prázdné pro automatické načtení") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
 
                 OutlinedTextField(
                     value = subscriberCountInput,
                     onValueChange = { subscriberCountInput = it },
-                    label = { Text("Počet odběratelů") },
-                    placeholder = { Text("např. 250") },
+                    label = { Text("Počet odběratelů (volitelné – načte se samo)") },
+                    placeholder = { Text("např. 1500") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true
                 )
 
-                Spacer(modifier = Modifier.height(8.dp))
-
                 Text("Kategorie tvorby:", fontSize = 11.sp, color = Slate400)
                 LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     items(categories) { cat ->
                         FilterChip(
@@ -890,7 +999,6 @@ private fun ConnectChannelDialog(
                 }
 
                 if (selectedMethod == YouTubeAuthType.YOUTUBE_API_KEY) {
-                    Spacer(modifier = Modifier.height(10.dp))
                     OutlinedTextField(
                         value = apiKeyInput,
                         onValueChange = { apiKeyInput = it },
@@ -906,13 +1014,17 @@ private fun ConnectChannelDialog(
             Button(
                 onClick = {
                     val finalQuery = channelHandleInput.trim().ifBlank {
-                        "@" + channelNameInput.trim().lowercase().replace(" ", "")
+                        if (channelNameInput.isNotBlank()) "@" + channelNameInput.trim().lowercase().replace(" ", "")
+                        else if (googleEmailInput.isNotBlank()) "@" + googleEmailInput.substringBefore("@").replace(".", "_")
+                        else "@kanal"
                     }
-                    val subs = subscriberCountInput.trim().toLongOrNull() ?: 0L
+                    val subs = subscriberCountInput.trim().toLongOrNull()
+                    val email = googleEmailInput.trim().ifBlank { null }
                     onConnect(
                         finalQuery,
                         selectedMethod,
                         apiKeyInput.trim().ifBlank { null },
+                        email,
                         channelNameInput.trim().ifBlank { null },
                         subs,
                         selectedCategory
@@ -920,7 +1032,7 @@ private fun ConnectChannelDialog(
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = youtubeRed)
             ) {
-                Text("Připojit můj kanál")
+                Text("Připojit kanál")
             }
         },
         dismissButton = {
@@ -949,10 +1061,10 @@ private fun AddCustomVideoDialog(
     var urlInput by remember { mutableStateOf("") }
     var durationInput by remember { mutableStateOf("10:15") }
     var isShort by remember { mutableStateOf(false) }
-    var viewsInput by remember { mutableStateOf("120") }
-    var likesInput by remember { mutableStateOf("15") }
-    var ctrInput by remember { mutableStateOf("6.2") }
-    var tagsInput by remember { mutableStateOf("youtube, vlog, tutorial") }
+    var viewsInput by remember { mutableStateOf("0") }
+    var likesInput by remember { mutableStateOf("0") }
+    var ctrInput by remember { mutableStateOf("5.0") }
+    var tagsInput by remember { mutableStateOf("") }
 
     val youtubeRed = Color(0xFFFF0033)
 
@@ -1072,8 +1184,8 @@ private fun AddCustomVideoDialog(
             Button(
                 onClick = {
                     if (titleInput.isNotBlank()) {
-                        val views = viewsInput.toLongOrNull() ?: 100L
-                        val likes = likesInput.toLongOrNull() ?: 10L
+                        val views = viewsInput.toLongOrNull() ?: 0L
+                        val likes = likesInput.toLongOrNull() ?: 0L
                         val ctr = ctrInput.toFloatOrNull() ?: 5.0f
                         val tags = tagsInput.split(",").map { it.trim() }.filter { it.isNotBlank() }
                         onAdd(
