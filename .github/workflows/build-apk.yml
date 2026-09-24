@@ -1,9 +1,8 @@
 name: Build Android APK
 
 on:
+  # Build every commit pushed to any branch, including version tags.
   push:
-    branches: [ "main", "master" ]
-    tags: [ "v*" ]
   pull_request:
     branches: [ "main", "master" ]
   workflow_dispatch:
