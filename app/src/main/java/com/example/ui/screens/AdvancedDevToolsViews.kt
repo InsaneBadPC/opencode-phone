@@ -1,6 +1,11 @@
 package com.example.ui.screens
 
+import android.app.Activity
+import android.content.Intent
+import android.speech.RecognizerIntent
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -549,9 +554,24 @@ fun VoiceCodingView(
     viewModel: OpenCodeViewModel,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     val history by viewModel.voiceHistory.collectAsState()
     val isListening by viewModel.isVoiceListening.collectAsState()
-    var simulatedVoiceInput by remember { mutableStateOf("Vytvoř funkci pro odeslání HTTP požadavku") }
+    var voiceInputText by remember { mutableStateOf("") }
+
+    val speechLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK && result.data != null) {
+            val matches = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+            val text = matches?.firstOrNull()
+            if (!text.isNullOrBlank()) {
+                voiceInputText = text
+                viewModel.triggerVoiceCommand(text)
+                Toast.makeText(context, "Rozpoznáno: \"$text\"", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
 
     Column(
         modifier = modifier
@@ -577,7 +597,16 @@ fun VoiceCodingView(
 
                 FilledIconButton(
                     onClick = {
-                        viewModel.triggerVoiceCommand(simulatedVoiceInput)
+                        try {
+                            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                                putExtra(RecognizerIntent.EXTRA_LANGUAGE, "cs-CZ")
+                                putExtra(RecognizerIntent.EXTRA_PROMPT, "Mluvte... (např. 'ulož soubor' nebo 'spusť testy')")
+                            }
+                            speechLauncher.launch(intent)
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "Hlasový vstup není dostupný: ${e.message}", Toast.LENGTH_SHORT).show()
+                        }
                     },
                     modifier = Modifier.size(64.dp),
                     colors = IconButtonDefaults.filledIconButtonColors(containerColor = if (isListening) RoseError else CyanBright)
@@ -588,10 +617,21 @@ fun VoiceCodingView(
                 Spacer(modifier = Modifier.height(12.dp))
 
                 OutlinedTextField(
-                    value = simulatedVoiceInput,
-                    onValueChange = { simulatedVoiceInput = it },
-                    label = { Text("Simulovaný hlasový příkaz") },
-                    modifier = Modifier.fillMaxWidth()
+                    value = voiceInputText,
+                    onValueChange = { voiceInputText = it },
+                    label = { Text("Příkaz pro IDE") },
+                    placeholder = { Text("Zadejte nebo stiskněte mikrofon výše...") },
+                    modifier = Modifier.fillMaxWidth(),
+                    trailingIcon = {
+                        if (voiceInputText.isNotBlank()) {
+                            IconButton(onClick = {
+                                viewModel.triggerVoiceCommand(voiceInputText)
+                                voiceInputText = ""
+                            }) {
+                                Icon(Icons.Default.Send, contentDescription = "Odeslat", tint = CyanBright)
+                            }
+                        }
+                    }
                 )
 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -615,16 +655,24 @@ fun VoiceCodingView(
             Column(modifier = Modifier.padding(14.dp)) {
                 Text("Historie hlasových příkazů:", fontWeight = FontWeight.Bold, color = Slate200, fontSize = 12.sp)
                 Spacer(modifier = Modifier.height(6.dp))
-                history.forEach { item ->
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp)
-                            .background(Slate800, RoundedCornerShape(8.dp))
-                            .padding(8.dp)
-                    ) {
-                        Text("\"${item.recognizedText}\"", fontWeight = FontWeight.Bold, color = CyanBright, fontSize = 12.sp)
-                        Text("Akce: ${item.executedAction} • ${item.timestamp}", fontSize = 10.sp, color = Slate300)
+                if (history.isEmpty()) {
+                    Text(
+                        text = "Zatím žádné zadané příkazy. Stiskněte tlačítko mikrofonu výše.",
+                        fontSize = 11.sp,
+                        color = Slate500
+                    )
+                } else {
+                    history.forEach { item ->
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp)
+                                .background(Slate800, RoundedCornerShape(8.dp))
+                                .padding(8.dp)
+                        ) {
+                            Text("\"${item.recognizedText}\"", fontWeight = FontWeight.Bold, color = CyanBright, fontSize = 12.sp)
+                            Text("Akce: ${item.executedAction} • ${item.timestamp}", fontSize = 10.sp, color = Slate300)
+                        }
                     }
                 }
             }

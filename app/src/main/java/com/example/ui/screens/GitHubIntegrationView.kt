@@ -160,7 +160,7 @@ fun GitHubIntegrationView(
                         }
 
                         Text(
-                            text = "Repozitář: opencode-android-ide",
+                            text = "Repozitář: InsaneBadPC/opencode-phone",
                             fontSize = 11.sp,
                             color = Slate300
                         )

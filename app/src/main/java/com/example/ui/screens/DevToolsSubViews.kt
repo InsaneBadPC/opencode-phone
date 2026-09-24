@@ -42,7 +42,7 @@ fun GitStudioView(viewModel: OpenCodeViewModel, modifier: Modifier = Modifier) {
     val clipboardManager = LocalClipboardManager.current
     val updateState by viewModel.updateState.collectAsState()
     val updateConfig by viewModel.updateConfig.collectAsState()
-    var repoInput by remember { mutableStateOf(updateConfig.githubRepo) }
+    var repoInput by remember(updateConfig.githubRepo) { mutableStateOf(updateConfig.githubRepo) }
 
     if (selectedDiff != null) {
         // Visual Diff Dialog
@@ -193,6 +193,7 @@ fun GitStudioView(viewModel: OpenCodeViewModel, modifier: Modifier = Modifier) {
                             viewModel.setUpdateGithubRepo(it)
                         },
                         label = { Text("GitHub Repozitář (owner/repo)", fontSize = 10.sp) },
+                        placeholder = { Text("InsaneBadPC/opencode-phone", color = Slate500) },
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = CyanBright,
@@ -203,6 +204,33 @@ fun GitStudioView(viewModel: OpenCodeViewModel, modifier: Modifier = Modifier) {
                         shape = RoundedCornerShape(8.dp),
                         modifier = Modifier.fillMaxWidth()
                     )
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Oficiální repozitář:", fontSize = 10.sp, color = Slate400)
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = CyanBright.copy(alpha = 0.15f),
+                            border = BorderStroke(0.5.dp, CyanBright),
+                            modifier = Modifier.clickable {
+                                repoInput = "InsaneBadPC/opencode-phone"
+                                viewModel.setUpdateGithubRepo("InsaneBadPC/opencode-phone")
+                            }
+                        ) {
+                            Text(
+                                text = "InsaneBadPC/opencode-phone",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = CyanBright,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
 
                     Spacer(modifier = Modifier.height(10.dp))
 
@@ -223,15 +251,15 @@ fun GitStudioView(viewModel: OpenCodeViewModel, modifier: Modifier = Modifier) {
                         }
 
                         OutlinedButton(
-                            onClick = { viewModel.simulateNewVersion() },
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = EmeraldBright),
-                            border = BorderStroke(1.dp, EmeraldBright.copy(alpha = 0.6f)),
+                            onClick = { viewModel.openGitHubReleases() },
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = CyanBright),
+                            border = BorderStroke(1.dp, CyanBright.copy(alpha = 0.6f)),
                             shape = RoundedCornerShape(8.dp),
                             modifier = Modifier.weight(1f)
                         ) {
-                            Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Icon(Icons.Default.Launch, contentDescription = null, modifier = Modifier.size(14.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Simulovat dialog", fontSize = 11.sp)
+                            Text("Releases na GitHubu", fontSize = 11.sp)
                         }
                     }
 

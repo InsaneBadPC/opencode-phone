@@ -9,6 +9,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -94,18 +95,32 @@ fun MainScreen(
                             Spacer(modifier = Modifier.width(6.dp))
                             Surface(
                                 shape = RoundedCornerShape(4.dp),
-                                color = Slate800,
+                                color = if (viewModel.appUpdateManager.isNewerThanCurrent(viewModel.appVersionName)) AmberWarning.copy(alpha = 0.2f) else Slate800,
+                                border = if (viewModel.appUpdateManager.isNewerThanCurrent(viewModel.appVersionName)) androidx.compose.foundation.BorderStroke(1.dp, AmberWarning) else null,
                                 modifier = Modifier
-                                    .clickable { viewModel.checkForUpdates() }
+                                    .clickable { viewModel.forceOfferUpdate() }
                                     .testTag("top_version_badge")
                             ) {
-                                Text(
-                                    text = "v${viewModel.appVersionName}",
-                                    fontSize = 9.sp,
-                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                                    color = CyanBright,
-                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
-                                )
+                                Row(
+                                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = "v${viewModel.appVersionName}",
+                                        fontSize = 9.sp,
+                                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                        color = if (viewModel.appUpdateManager.isNewerThanCurrent(viewModel.appVersionName)) AmberWarning else CyanBright
+                                    )
+                                    if (viewModel.appUpdateManager.isNewerThanCurrent(viewModel.appVersionName)) {
+                                        Spacer(modifier = Modifier.width(3.dp))
+                                        Text(
+                                            text = "⬆ 1.2.0",
+                                            fontSize = 8.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = EmeraldBright
+                                        )
+                                    }
+                                }
                             }
                         }
 
@@ -233,19 +248,84 @@ fun MainScreen(
         },
         contentWindowInsets = WindowInsets.safeDrawing
     ) { innerPadding ->
-        Box(
+        val updateState by viewModel.updateState.collectAsState()
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            when (currentTab) {
-                0 -> ChatScreen(viewModel = viewModel)
-                1 -> FilesScreen(viewModel = viewModel)
-                2 -> MarketplaceScreen(viewModel = viewModel)
-                3 -> InternetScreen(viewModel = viewModel)
-                4 -> YouTubeAgentScreen(viewModel = viewModel)
-                5 -> SkillsMcpScreen(viewModel = viewModel)
-                6 -> PluginsSettingsScreen(viewModel = viewModel)
+            if (updateState is com.example.data.update.UpdateCheckState.UpdateAvailable) {
+                val rel = (updateState as com.example.data.update.UpdateCheckState.UpdateAvailable).release
+                Surface(
+                    color = Slate900,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, CyanBright.copy(alpha = 0.5f)),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                        .clickable { viewModel.forceOfferUpdate() }
+                        .testTag("banner_update_available")
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(CyanBright.copy(alpha = 0.15f)),
+                            contentAlignment = androidx.compose.ui.Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Default.SystemUpdate,
+                                contentDescription = null,
+                                tint = CyanBright,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Nová aktualizace ${rel.tagName} k dispozici!",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp,
+                                color = Slate100
+                            )
+                            Text(
+                                text = "Oficiální Google OAuth 2.0 & YouTube Agent • Zobrazit podrobnosti",
+                                fontSize = 10.sp,
+                                color = Slate400,
+                                maxLines = 1
+                            )
+                        }
+                        FilledTonalButton(
+                            onClick = { viewModel.forceOfferUpdate() },
+                            colors = ButtonDefaults.filledTonalButtonColors(containerColor = CyanBright, contentColor = Slate950),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                            shape = RoundedCornerShape(6.dp),
+                            modifier = Modifier.height(30.dp)
+                        ) {
+                            Text("Instalovat", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+            ) {
+                when (currentTab) {
+                    0 -> ChatScreen(viewModel = viewModel)
+                    1 -> FilesScreen(viewModel = viewModel)
+                    2 -> MarketplaceScreen(viewModel = viewModel)
+                    3 -> InternetScreen(viewModel = viewModel)
+                    4 -> YouTubeAgentScreen(viewModel = viewModel)
+                    5 -> SkillsMcpScreen(viewModel = viewModel)
+                    6 -> PluginsSettingsScreen(viewModel = viewModel)
+                }
             }
         }
     }

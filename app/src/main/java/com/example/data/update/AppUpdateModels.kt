@@ -25,7 +25,7 @@ sealed class UpdateCheckState {
 }
 
 data class UpdateConfig(
-    val githubRepo: String = "p-p-lukes892/opencode-android",
+    val githubRepo: String = "InsaneBadPC/opencode-phone",
     val autoCheckOnLaunch: Boolean = true,
     val allowPrereleases: Boolean = false,
     val lastCheckedTimestamp: Long? = null

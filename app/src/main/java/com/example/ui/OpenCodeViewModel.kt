@@ -139,6 +139,10 @@ class OpenCodeViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    fun forceOfferUpdate() {
+        appUpdateManager.offerUpdateNow()
+    }
+
     fun downloadAndInstallUpdate(release: AppReleaseInfo) {
         viewModelScope.launch {
             appUpdateManager.downloadAndInstall(release)
@@ -161,8 +165,9 @@ class OpenCodeViewModel(application: Application) : AndroidViewModel(application
         appUpdateManager.setGithubRepo(repo)
     }
 
-    fun simulateNewVersion() {
-        appUpdateManager.simulateNewVersion("1.2.0")
+    fun openGitHubReleases() {
+        val repo = appUpdateManager.config.value.githubRepo
+        appUpdateManager.openBrowser("https://github.com/$repo/releases")
     }
 
     val secureKeyStorage by lazy {
@@ -176,6 +181,7 @@ class OpenCodeViewModel(application: Application) : AndroidViewModel(application
             terminalExecutor = repository.terminalExecutor,
             secureKeyStorage = secureKeyStorage,
             appUpdateManager = appUpdateManager,
+            webSearchService = repository.webSearchService,
             onProviderKeyUpdated = { providerId, key ->
                 updateProviderApiKey(providerId, key)
             }
@@ -221,6 +227,16 @@ class OpenCodeViewModel(application: Application) : AndroidViewModel(application
 
     init {
         repository.zenAiService.agentEngine = agentEngine
+        viewModelScope.launch {
+            connectedYouTubeChannel.collect { ch ->
+                repository.zenAiService.connectedYouTubeChannel = ch
+            }
+        }
+        viewModelScope.launch {
+            channelVideos.collect { vids ->
+                repository.zenAiService.channelVideos = vids
+            }
+        }
         loadSavedProviders()
         viewModelScope.launch {
             sessions.collect { sessionList ->
@@ -228,6 +244,10 @@ class OpenCodeViewModel(application: Application) : AndroidViewModel(application
                     _currentSessionId.value = sessionList.first().id
                 }
             }
+        }
+        viewModelScope.launch {
+            kotlinx.coroutines.delay(600)
+            appUpdateManager.checkForUpdates(appVersionName)
         }
     }
 
@@ -2242,8 +2262,8 @@ suspend fun fetchData(url: String): String {
                 serviceCategory = "Úložiště & Záloha",
                 iconName = "cloud",
                 description = "Obousměrná synchronizace složek projektu, automatické zálohy a sdílení velkých datasetů.",
-                isConnected = true,
-                connectedAccountOrProject = "p.p.lukes892@gmail.com",
+                isConnected = false,
+                connectedAccountOrProject = null,
                 availableActions = listOf("Zálohovat na Disk", "Stáhnout složku", "Sdílet odkaz")
             ),
             CloudServiceIntegration(
@@ -2731,7 +2751,7 @@ ${steps.mapIndexed { idx, s -> "${idx + 1}. $s" }.joinToString("\n")}
     // 26. NATIVNÍ PROPOJENÍ NA GITHUB (GIT & GITHUB ENGINE)
     // =========================================================================
     val gitHubConnected = MutableStateFlow(true)
-    val gitHubUser = MutableStateFlow("insanebad2")
+    val gitHubUser = MutableStateFlow("InsaneBadPC")
     val currentGitBranch = MutableStateFlow("main")
     val availableGitBranches = MutableStateFlow(listOf("main", "dev", "feature/skills-memory", "release/v2.4"))
     val gitCommitMessage = MutableStateFlow("")
@@ -2739,37 +2759,37 @@ ${steps.mapIndexed { idx, s -> "${idx + 1}. $s" }.joinToString("\n")}
     val gitHubRepositories = MutableStateFlow<List<GitHubRepository>>(
         listOf(
             GitHubRepository(
-                id = "repo-opencode",
-                name = "opencode-android-ide",
-                fullName = "insanebad2/opencode-android-ide",
-                description = "Nativní Android IDE s podporou lokálního MCP, Termuxu, Zen AI a cloud integrací.",
+                id = "repo-opencode-phone",
+                name = "opencode-phone",
+                fullName = "InsaneBadPC/opencode-phone",
+                description = "Oficiální repozitář projektu OpenCode Phone pro Android s nativním AI agentem, Termuxem a in-app updaterem.",
                 isPrivate = false,
                 defaultBranch = "main",
-                starsCount = 142,
-                updatedAt = "Před 10 minutami",
-                cloneUrl = "https://github.com/insanebad2/opencode-android-ide.git"
+                starsCount = 5,
+                updatedAt = "Aktivní",
+                cloneUrl = "https://github.com/InsaneBadPC/opencode-phone.git"
             ),
             GitHubRepository(
                 id = "repo-gemini-suite",
                 name = "gemini-agent-toolkit",
-                fullName = "insanebad2/gemini-agent-toolkit",
+                fullName = "InsaneBadPC/gemini-agent-toolkit",
                 description = "Sada nástrojů a systémových instrukcí pro autonomní agenty a MCP servery.",
                 isPrivate = true,
                 defaultBranch = "main",
                 starsCount = 38,
                 updatedAt = "Včera",
-                cloneUrl = "https://github.com/insanebad2/gemini-agent-toolkit.git"
+                cloneUrl = "https://github.com/InsaneBadPC/gemini-agent-toolkit.git"
             ),
             GitHubRepository(
                 id = "repo-cloud-runners",
                 name = "oracle-oci-runners",
-                fullName = "insanebad2/oracle-oci-runners",
+                fullName = "InsaneBadPC/oracle-oci-runners",
                 description = "Automatizované skripty pro nastavení OCI Always Free ARM instancí a Docker prostředí.",
                 isPrivate = false,
                 defaultBranch = "dev",
                 starsCount = 27,
                 updatedAt = "Před 3 dny",
-                cloneUrl = "https://github.com/insanebad2/oracle-oci-runners.git"
+                cloneUrl = "https://github.com/InsaneBadPC/oracle-oci-runners.git"
             )
         )
     )
@@ -2786,10 +2806,10 @@ ${steps.mapIndexed { idx, s -> "${idx + 1}. $s" }.joinToString("\n")}
 
     val gitCommitHistory = MutableStateFlow<List<GitCommitRecord>>(
         listOf(
-            GitCommitRecord("7a3e91b", "feat: Přidán autonomní Agent Prohlížeč a Termux SSH", "insanebad2", "Před 40 min"),
-            GitCommitRecord("4c81b2a", "feat: Cloud Integrations Hub (Google Disk, Supabase, Firefly, OCI)", "insanebad2", "Před 2 hod"),
-            GitCommitRecord("1f99c0d", "feat: AST diagramy a lokální offline LLM runtime", "insanebad2", "Včera"),
-            GitCommitRecord("0e4b85c", "init: Základní kostra OpenCode IDE s Room databází", "insanebad2", "Před 2 dny")
+            GitCommitRecord("7a3e91b", "feat: Přidán autonomní Agent Prohlížeč a Termux SSH", "developer", "Před 40 min"),
+            GitCommitRecord("4c81b2a", "feat: Cloud Integrations Hub (Google Disk, Supabase, Firefly, OCI)", "developer", "Před 2 hod"),
+            GitCommitRecord("1f99c0d", "feat: AST diagramy a lokální offline LLM runtime", "developer", "Včera"),
+            GitCommitRecord("0e4b85c", "init: Základní kostra OpenCode IDE s Room databází", "developer", "Před 2 dny")
         )
     )
 
@@ -2798,7 +2818,7 @@ ${steps.mapIndexed { idx, s -> "${idx + 1}. $s" }.joinToString("\n")}
             GitHubPullRequest(
                 number = 14,
                 title = "feat: Podpora autonomních skillů a ukládání session do .md",
-                author = "insanebad2",
+                author = "developer",
                 branch = "feature/skills-memory",
                 status = "OPEN",
                 commentsCount = 3
@@ -2806,7 +2826,7 @@ ${steps.mapIndexed { idx, s -> "${idx + 1}. $s" }.joinToString("\n")}
             GitHubPullRequest(
                 number = 13,
                 title = "fix: Správné ošetření human takeover v Agent WebView",
-                author = "insanebad2",
+                author = "developer",
                 branch = "fix/browser-takeover",
                 status = "MERGED",
                 commentsCount = 1
@@ -3300,7 +3320,7 @@ jobs:
     val connectedYouTubeChannel = MutableStateFlow<YouTubeChannelAccount?>(null)
     val channelVideos = MutableStateFlow<List<YouTubeVideoItem>>(emptyList())
     val currentGoogleAccount = MutableStateFlow<String>(
-        ytPrefs.getString("saved_google_email", null)?.ifBlank { null } ?: "insanebad2@gmail.com"
+        ytPrefs.getString("saved_google_email", null)?.ifBlank { null } ?: ""
     )
     val isConnectingYouTubeChannel = MutableStateFlow(false)
     val youtubeConnectionError = MutableStateFlow<String?>(null)
@@ -3463,10 +3483,13 @@ jobs:
                     setGoogleAccount(resolvedEmail)
                 }
 
+                val effectiveApiKey = apiKey?.takeIf { it.isNotBlank() }
+                    ?: secureKeyStorage.getApiKey("youtube_api_key").takeIf { it.isNotBlank() }
+
                 val result = youTubeChannelService.resolveChannel(
                     query = query,
                     authType = authType,
-                    apiKey = apiKey,
+                    apiKey = effectiveApiKey,
                     userEmail = resolvedEmail,
                     customTitle = customTitle,
                     customSubscribers = customSubscribers,
@@ -3477,7 +3500,7 @@ jobs:
                 if (result.isSuccess) {
                     val channel = result.getOrThrow()
                     connectedYouTubeChannel.value = channel
-                    val videos = youTubeChannelService.fetchChannelVideos(channel, apiKey)
+                    val videos = youTubeChannelService.fetchChannelVideos(channel, effectiveApiKey)
                     channelVideos.value = videos
                     persistYouTubeChannelState(channel, videos)
                 } else {
@@ -3485,6 +3508,58 @@ jobs:
                 }
             } catch (e: Exception) {
                 youtubeConnectionError.value = e.message ?: "Neočekávaná chyba připojení"
+            } finally {
+                isConnectingYouTubeChannel.value = false
+            }
+        }
+    }
+
+    fun connectYouTubeChannelWithOAuth(
+        accessToken: String,
+        userEmail: String? = null
+    ) {
+        viewModelScope.launch {
+            isConnectingYouTubeChannel.value = true
+            youtubeConnectionError.value = null
+            try {
+                val cleanEmail = userEmail?.trim()?.ifBlank { null }
+                val isRealBearerToken = accessToken.startsWith("ya29.") || accessToken.startsWith("Bearer ")
+                val result = if (isRealBearerToken) {
+                    youTubeChannelService.resolveChannelWithOAuth(accessToken, cleanEmail)
+                } else {
+                    // Try OAuth first, with graceful fallback to resolving by handle or email
+                    val oauthRes = youTubeChannelService.resolveChannelWithOAuth(accessToken, cleanEmail)
+                    if (oauthRes.isSuccess) oauthRes else {
+                        val query = accessToken.takeIf { it.startsWith("@") || it.startsWith("UC") }
+                            ?: cleanEmail?.let { "@" + it.substringBefore("@") }
+                            ?: "@muj_kanal"
+                        youTubeChannelService.resolveChannel(
+                            query = query,
+                            authType = YouTubeAuthType.GOOGLE_OAUTH,
+                            userEmail = cleanEmail
+                        )
+                    }
+                }
+
+                if (result.isSuccess) {
+                    val channel = result.getOrThrow()
+                    connectedYouTubeChannel.value = channel
+                    if (!cleanEmail.isNullOrBlank()) {
+                        setGoogleAccount(cleanEmail)
+                    }
+                    val videos = if (isRealBearerToken) {
+                        val oauthVids = youTubeChannelService.fetchChannelVideosWithOAuth(accessToken)
+                        if (oauthVids.isNotEmpty()) oauthVids else youTubeChannelService.fetchChannelVideos(channel)
+                    } else {
+                        youTubeChannelService.fetchChannelVideos(channel)
+                    }
+                    channelVideos.value = videos
+                    persistYouTubeChannelState(channel, videos)
+                } else {
+                    youtubeConnectionError.value = result.exceptionOrNull()?.message ?: "Chyba při přihlašování přes Google OAuth"
+                }
+            } catch (e: Exception) {
+                youtubeConnectionError.value = e.message ?: "Chyba OAuth autentizace"
             } finally {
                 isConnectingYouTubeChannel.value = false
             }
@@ -3599,6 +3674,8 @@ jobs:
         channelVideos.value = emptyList()
         selectedVideoForAudit.value = null
         videoAuditResult.value = null
+        currentGoogleAccount.value = ""
+        ytPrefs.edit().remove("saved_google_email").apply()
         persistYouTubeChannelState(null, emptyList())
     }
 

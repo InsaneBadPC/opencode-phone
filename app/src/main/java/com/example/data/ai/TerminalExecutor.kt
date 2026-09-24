@@ -53,18 +53,23 @@ class TerminalExecutor(
                 """.trimIndent(), 0
             )
             "ls" -> {
-                val allFiles = mutableListOf<String>()
-                // Query database
-                // For simplicity, list known files or simulate
-                val sb = StringBuilder()
-                sb.append("drwxr-xr-x 4 opencode dev 4096 Sep 21 19:55 .\n")
-                sb.append("drwxr-xr-x 3 opencode dev 4096 Sep 21 19:50 ..\n")
-                sb.append("-rw-r--r-- 1 opencode dev  842 Sep 21 19:55 AppConfig.json\n")
-                sb.append("-rw-r--r-- 1 opencode dev 1248 Sep 21 19:55 MainActivity.kt\n")
-                sb.append("-rw-r--r-- 1 opencode dev 2140 Sep 21 19:55 Repository.kt\n")
-                sb.append("-rw-r--r-- 1 opencode dev  670 Sep 21 19:55 schema.sql\n")
-                sb.append("-rw-r--r-- 1 opencode dev 1450 Sep 21 19:55 script.py\n")
-                Pair(sb.toString().trimEnd(), 0)
+                val files = workspaceDao.getAllFilesList()
+                if (files.isEmpty()) {
+                    Pair("total 0\n(empty workspace)", 0)
+                } else {
+                    val sb = StringBuilder()
+                    sb.append("total ${files.size}\n")
+                    files.forEach { f ->
+                        val size = f.content.toByteArray().size
+                        val statusBadge = when (f.gitStatus) {
+                            "modified" -> "M"
+                            "new" -> "?"
+                            else -> " "
+                        }
+                        sb.append("-rw-r--r-- 1 opencode dev %6d [%s] %s\n".format(size, statusBadge, f.path))
+                    }
+                    Pair(sb.toString().trimEnd(), 0)
+                }
             }
             "cat" -> {
                 if (args.isEmpty()) {
@@ -135,23 +140,32 @@ class TerminalExecutor(
             "git" -> {
                 val sub = args.firstOrNull() ?: "status"
                 when (sub) {
-                    "status" -> Pair(
-                        """
-                        On branch main
-                        Your branch is up to date with 'origin/main'.
-
-                        Changes not staged for commit:
-                          (use "git add <file>..." to update what will be committed)
-                          modified:   MainActivity.kt
-                          modified:   schema.sql
-
-                        Untracked files:
-                          (use "git add <file>..." to include in what will be committed)
-                          script.py
-
-                        no changes added to commit (use "git add" and "git commit -m")
-                        """.trimIndent(), 0
-                    )
+                    "status" -> {
+                        val files = workspaceDao.getAllFilesList()
+                        val modified = files.filter { it.gitStatus == "modified" }
+                        val newFiles = files.filter { it.gitStatus == "new" }
+                        val sb = StringBuilder()
+                        sb.append("On branch main\n")
+                        sb.append("Your branch is up to date with 'origin/main'.\n\n")
+                        if (modified.isNotEmpty()) {
+                            sb.append("Changes not staged for commit:\n")
+                            sb.append("  (use \"git add <file>...\" to update what will be committed)\n")
+                            modified.forEach { sb.append("    modified:   ${it.path}\n") }
+                            sb.append("\n")
+                        }
+                        if (newFiles.isNotEmpty()) {
+                            sb.append("Untracked files:\n")
+                            sb.append("  (use \"git add <file>...\" to include in what will be committed)\n")
+                            newFiles.forEach { sb.append("    ${it.path}\n") }
+                            sb.append("\n")
+                        }
+                        if (modified.isEmpty() && newFiles.isEmpty()) {
+                            sb.append("nothing to commit, working tree clean")
+                        } else {
+                            sb.append("no changes added to commit (use \"git add\" and \"git commit -m\")")
+                        }
+                        Pair(sb.toString().trimEnd(), 0)
+                    }
                     "log" -> Pair(
                         """
                         commit a7f920c (HEAD -> main, origin/main)

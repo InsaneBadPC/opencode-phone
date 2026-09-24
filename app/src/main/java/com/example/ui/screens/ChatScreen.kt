@@ -2,12 +2,10 @@ package com.example.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -22,7 +20,6 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.data.ai.ZenModel
 import com.example.data.local.entities.ChatMessageEntity
 import com.example.ui.OpenCodeViewModel
 import com.example.ui.components.AiModelPickerDialog
@@ -44,8 +41,6 @@ fun ChatScreen(
     val selectedAiModel by viewModel.selectedAiModel.collectAsState()
     val availableModelsByProvider by viewModel.availableModelsByProvider.collectAsState()
     val allAiProviders by viewModel.allAiProviders.collectAsState()
-    val skills by viewModel.skills.collectAsState()
-    val enabledSkills = remember(skills) { skills.filter { it.isEnabled } }
 
     val activeProject by viewModel.activeProject.collectAsState()
     val sessions by viewModel.sessions.collectAsState()
@@ -94,13 +89,13 @@ fun ChatScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        // Top Toolbar: Model Selector & Actions
+        // Clean Top Toolbar: Model & Project selector
         Surface(
             color = Slate900,
             tonalElevation = 2.dp,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+            Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -112,28 +107,33 @@ fun ChatScreen(
                         onClick = { showModelPickerDialog = true },
                         label = {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Default.AutoAwesome,
-                                    contentDescription = null,
-                                    tint = CyanBright,
-                                    modifier = Modifier.size(16.dp)
+                                Box(
+                                    modifier = Modifier
+                                        .size(7.dp)
+                                        .background(EmeraldBright, CircleShape)
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
                                     text = "${selectedAiModel.displayName} • ${selectedAiModel.providerName}",
                                     fontWeight = FontWeight.SemiBold,
+                                    fontSize = 12.sp,
                                     color = CyanBright
                                 )
                                 Icon(
                                     imageVector = Icons.Default.ArrowDropDown,
                                     contentDescription = null,
                                     tint = CyanBright,
-                                    modifier = Modifier.size(18.dp)
+                                    modifier = Modifier.size(16.dp)
                                 )
                             }
                         },
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = Slate800
+                        ),
+                        border = FilterChipDefaults.filterChipBorder(
+                            borderColor = Slate700,
+                            enabled = true,
+                            selected = true
                         ),
                         modifier = Modifier.testTag("model_picker_chip")
                     )
@@ -142,7 +142,7 @@ fun ChatScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(
                             onClick = { showSessionsDialog = true },
-                            modifier = Modifier.testTag("btn_open_sessions_dialog")
+                            modifier = Modifier.size(36.dp).testTag("btn_open_sessions_dialog")
                         ) {
                             BadgedBox(
                                 badge = {
@@ -159,26 +159,27 @@ fun ChatScreen(
                                 Icon(
                                     imageVector = Icons.Default.ChatBubbleOutline,
                                     contentDescription = "Seznam relací",
-                                    tint = Slate200,
-                                    modifier = Modifier.size(19.dp)
+                                    tint = Slate300,
+                                    modifier = Modifier.size(18.dp)
                                 )
                             }
                         }
 
                         IconButton(
                             onClick = { viewModel.createNewSession() },
-                            modifier = Modifier.testTag("new_chat_button")
+                            modifier = Modifier.size(36.dp).testTag("new_chat_button")
                         ) {
                             Icon(
                                 imageVector = Icons.Default.AddComment,
                                 contentDescription = "Nová relace",
-                                tint = Slate200
+                                tint = Slate300,
+                                modifier = Modifier.size(18.dp)
                             )
                         }
                     }
                 }
 
-                // Active Project & Working Folder Chip
+                // Active Project & Working Folder Bar
                 activeProject?.let { proj ->
                     Surface(
                         shape = RoundedCornerShape(6.dp),
@@ -186,7 +187,7 @@ fun ChatScreen(
                         border = androidx.compose.foundation.BorderStroke(0.5.dp, Slate800),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(top = 4.dp)
+                            .padding(top = 2.dp)
                             .clickable { showProjectsDialog = true }
                             .testTag("chat_active_project_bar")
                     ) {
@@ -196,7 +197,7 @@ fun ChatScreen(
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                                Icon(Icons.Default.FolderSpecial, contentDescription = null, tint = CyanBright, modifier = Modifier.size(13.dp))
+                                Icon(Icons.Default.Folder, contentDescription = null, tint = CyanBright, modifier = Modifier.size(13.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
                                     text = proj.name,
@@ -208,133 +209,155 @@ fun ChatScreen(
                                 Text(
                                     text = proj.workingDirectory,
                                     fontSize = 10.sp,
-                                    color = AmberWarning,
+                                    color = Slate400,
                                     fontFamily = FontFamily.Monospace,
                                     maxLines = 1
                                 )
                             }
-                            Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = Slate400, modifier = Modifier.size(16.dp))
-                        }
-                    }
-                }
-
-                // Active Skills Pills
-                if (enabledSkills.isNotEmpty()) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState())
-                            .padding(top = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Aktivní dovednosti: ",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Slate400
-                        )
-                        enabledSkills.forEach { skill ->
-                            AssistChip(
-                                onClick = {},
-                                label = { Text(skill.name, fontSize = 11.sp) },
-                                leadingIcon = {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(8.dp)
-                                            .background(EmeraldBright, CircleShape)
-                                    )
-                                },
-                                modifier = Modifier
-                                    .padding(end = 6.dp)
-                                    .height(28.dp),
-                                colors = AssistChipDefaults.assistChipColors(
-                                    containerColor = Slate800,
-                                    labelColor = Slate200
-                                )
-                            )
+                            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Slate500, modifier = Modifier.size(14.dp))
                         }
                     }
                 }
             }
         }
 
-        // Messages List
-        LazyColumn(
-            state = listState,
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp),
-            contentPadding = PaddingValues(vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            items(messages, key = { it.id }) { msg ->
-                ChatMessageItem(message = msg)
-            }
-
-            if (isThinking) {
-                item {
-                    Row(
+        // Messages List or Empty Hero State
+        if (messages.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(20.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Box(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                            .size(54.dp)
+                            .background(CyanBright.copy(alpha = 0.12f), CircleShape),
+                        contentAlignment = Alignment.Center
                     ) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(18.dp),
-                            color = CyanBright,
-                            strokeWidth = 2.dp
-                        )
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Text(
-                            text = "${selectedAiModel.displayName} generuje kód a analyzuje odpověď...",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = CyanBright,
-                            fontFamily = FontFamily.Monospace
+                        Icon(
+                            imageVector = Icons.Default.Terminal,
+                            contentDescription = null,
+                            tint = CyanBright,
+                            modifier = Modifier.size(28.dp)
                         )
                     }
-                }
-            }
-        }
 
-        // Quick Prompt Action Chips
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 12.dp, vertical = 4.dp)
-        ) {
-            val chips = listOf(
-                "/release 1.3.0 'Nová aktualizace kódu'",
-                "/secret list",
-                "/update check",
-                "/edit AppConfig.json",
-                "/secret set GEMINI_API_KEY AIzaSy...",
-                "/terminal git status",
-                "/search Jetpack Compose M3",
-                "Vysvětli architekturu projektu"
-            )
-            chips.forEach { chipText ->
-                SuggestionChip(
-                    onClick = {
-                        viewModel.sendMessage(chipText)
-                    },
-                    label = {
-                        Text(
-                            text = chipText,
-                            fontSize = 11.sp,
-                            fontFamily = if (chipText.startsWith("/")) FontFamily.Monospace else FontFamily.Default
-                        )
-                    },
-                    modifier = Modifier.padding(end = 6.dp),
-                    colors = SuggestionChipDefaults.suggestionChipColors(
-                        containerColor = Slate800,
-                        labelColor = if (chipText.startsWith("/")) CyanBright else Slate200
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    Text(
+                        text = "OpenCode Agent",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = Slate100
                     )
-                )
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Text(
+                        text = "Autonomní vývojářský agent přímo ve vašem pracovním prostoru.\nVytváří soubory, píše kód, hledá na webu a spouští terminál.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Slate400,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        lineHeight = 18.sp
+                    )
+
+                    Spacer(modifier = Modifier.height(20.dp))
+
+                    // 4 Quick Start Action Cards
+                    val starterPrompts = listOf(
+                        Triple("📝 Vytvoř soubor calculator.py", "Vytvoř soubor calculator.py s kalkulačkou v Pythonu", EmeraldBright),
+                        Triple("🌐 Hledej na webu Jetpack Compose novinky", "Hledej na webu: Jetpack Compose 1.7 news", CyanBright),
+                        Triple("💻 Spusť v terminálu git status", "git status", AmberWarning),
+                        Triple("🚀 Vytvoř novou verzi a sestav APK", "/release 1.3.0 'Automatická aktualizace aplikace'", VioletPurple)
+                    )
+
+                    starterPrompts.forEach { (title, promptToSend, color) ->
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = Slate900,
+                            border = androidx.compose.foundation.BorderStroke(0.5.dp, Slate800),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 3.dp)
+                                .clickable { viewModel.sendMessage(promptToSend) }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(6.dp)
+                                        .background(color, CircleShape)
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text(
+                                    text = title,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.Medium,
+                                    color = Slate200
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp),
+                contentPadding = PaddingValues(vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                items(messages, key = { it.id }) { msg ->
+                    ChatMessageItem(message = msg)
+                }
+
+                if (isThinking) {
+                    item {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = Slate900,
+                            border = androidx.compose.foundation.BorderStroke(0.5.dp, Slate800),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    color = CyanBright,
+                                    strokeWidth = 2.dp
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text(
+                                    text = "OpenCode Agent provádí požadavek...",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = CyanBright,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 12.sp
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
 
-        // Input Bar
+        // Clean Input Bar
         Surface(
             color = Slate900,
             tonalElevation = 4.dp,
@@ -351,16 +374,16 @@ fun ChatScreen(
                     onValueChange = { viewModel.updateChatInput(it) },
                     placeholder = {
                         Text(
-                            "Zeptejte se OpenCode nebo zadejte /search, /terminal...",
+                            "Napište úkol (vytvoř soubor, uprav, hledej na webu, terminál)...",
                             color = Slate400,
-                            fontSize = 13.sp
+                            fontSize = 12.sp
                         )
                     },
                     modifier = Modifier
                         .weight(1f)
                         .testTag("chat_input_field"),
                     maxLines = 4,
-                    shape = RoundedCornerShape(20.dp),
+                    shape = RoundedCornerShape(18.dp),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedContainerColor = Slate950,
                         unfocusedContainerColor = Slate950,
@@ -377,9 +400,9 @@ fun ChatScreen(
                     onClick = { viewModel.sendMessage() },
                     enabled = chatInput.isNotBlank() && !isThinking,
                     modifier = Modifier
-                        .size(48.dp)
+                        .size(44.dp)
                         .background(
-                            if (chatInput.isNotBlank() && !isThinking) CyanBright else Slate700,
+                            if (chatInput.isNotBlank() && !isThinking) CyanBright else Slate800,
                             CircleShape
                         )
                         .testTag("send_message_button")
@@ -387,8 +410,8 @@ fun ChatScreen(
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.Send,
                         contentDescription = "Odeslat",
-                        tint = if (chatInput.isNotBlank() && !isThinking) Slate950 else Slate400,
-                        modifier = Modifier.size(20.dp)
+                        tint = if (chatInput.isNotBlank() && !isThinking) Slate950 else Slate500,
+                        modifier = Modifier.size(18.dp)
                     )
                 }
             }
@@ -404,23 +427,23 @@ fun ChatMessageItem(message: ChatMessageEntity) {
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = if (isUser) Alignment.End else Alignment.Start
     ) {
-        // Role Header
+        // Subtle role indicator
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
         ) {
-            Icon(
-                imageVector = if (isUser) Icons.Default.Person else Icons.Default.Psychology,
-                contentDescription = null,
-                tint = if (isUser) VioletPurple else CyanBright,
-                modifier = Modifier.size(14.dp)
+            Box(
+                modifier = Modifier
+                    .size(5.dp)
+                    .background(if (isUser) VioletPurple else CyanBright, CircleShape)
             )
-            Spacer(modifier = Modifier.width(4.dp))
+            Spacer(modifier = Modifier.width(5.dp))
             Text(
-                text = if (isUser) "Vývojář" else "OpenCode Zen",
+                text = if (isUser) "Vývojář" else "OpenCode Agent",
                 style = MaterialTheme.typography.labelSmall,
-                color = if (isUser) VioletPurple else CyanBright,
-                fontWeight = FontWeight.Bold
+                color = if (isUser) Slate400 else CyanBright,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 11.sp
             )
         }
 
@@ -434,7 +457,7 @@ fun ChatMessageItem(message: ChatMessageEntity) {
             )
         }
 
-        // Message Content Bubble or Blocks
+        // Message Content
         if (isUser) {
             Surface(
                 shape = RoundedCornerShape(16.dp, 4.dp, 16.dp, 16.dp),
@@ -452,6 +475,7 @@ fun ChatMessageItem(message: ChatMessageEntity) {
             Surface(
                 shape = RoundedCornerShape(4.dp, 16.dp, 16.dp, 16.dp),
                 color = Slate900,
+                border = androidx.compose.foundation.BorderStroke(0.5.dp, Slate800),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(12.dp)) {
@@ -464,7 +488,6 @@ fun ChatMessageItem(message: ChatMessageEntity) {
 
 @Composable
 fun RenderMarkdownWithCode(text: String) {
-    // Splits text by triple-backtick code blocks
     val parts = text.split("```")
     parts.forEachIndexed { index, part ->
         if (index % 2 == 1) {
@@ -480,17 +503,18 @@ fun RenderMarkdownWithCode(text: String) {
             CodeBlockView(
                 code = codeBody.trimEnd(),
                 language = lang,
-                modifier = Modifier.padding(vertical = 6.dp)
+                modifier = Modifier.padding(vertical = 4.dp)
             )
         } else {
             // Normal text
-            if (part.isNotBlank()) {
+            val trimmedPart = part.trim()
+            if (trimmedPart.isNotBlank()) {
                 Text(
-                    text = part.trim(),
+                    text = trimmedPart,
                     style = MaterialTheme.typography.bodyMedium,
                     color = Slate100,
                     lineHeight = 20.sp,
-                    modifier = Modifier.padding(vertical = 4.dp)
+                    modifier = Modifier.padding(vertical = 2.dp)
                 )
             }
         }

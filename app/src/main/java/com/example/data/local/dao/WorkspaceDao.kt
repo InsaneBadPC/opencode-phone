@@ -9,8 +9,14 @@ interface WorkspaceDao {
     @Query("SELECT * FROM workspace_files ORDER BY isDirectory DESC, path ASC")
     fun getAllFiles(): Flow<List<WorkspaceFileEntity>>
 
+    @Query("SELECT * FROM workspace_files ORDER BY isDirectory DESC, path ASC")
+    suspend fun getAllFilesList(): List<WorkspaceFileEntity>
+
     @Query("SELECT * FROM workspace_files WHERE projectId = :projectId ORDER BY isDirectory DESC, path ASC")
     fun getFilesForProject(projectId: String): Flow<List<WorkspaceFileEntity>>
+
+    @Query("SELECT * FROM workspace_files WHERE projectId = :projectId ORDER BY isDirectory DESC, path ASC")
+    suspend fun getFilesForProjectList(projectId: String): List<WorkspaceFileEntity>
 
     @Query("SELECT * FROM workspace_files WHERE path = :path LIMIT 1")
     suspend fun getFileByPath(path: String): WorkspaceFileEntity?

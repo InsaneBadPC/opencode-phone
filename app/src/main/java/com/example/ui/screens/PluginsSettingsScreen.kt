@@ -224,6 +224,107 @@ fun PluginsSettingsScreen(
                         .padding(horizontal = 14.dp, vertical = 10.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
+                    // Karta in-app aktualizace aplikace (v1.2.0)
+                    item {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = Slate900),
+                            shape = RoundedCornerShape(12.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, CyanBright.copy(alpha = 0.5f)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("card_inapp_update")
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(36.dp)
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(CyanBright.copy(alpha = 0.15f)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                Icons.Default.SystemUpdate,
+                                                contentDescription = null,
+                                                tint = CyanBright,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Column {
+                                            Text(
+                                                text = "Aktualizace aplikace",
+                                                style = MaterialTheme.typography.titleMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Slate100
+                                            )
+                                            Text(
+                                                text = "Nová verze v1.2.0 (Google OAuth & YouTube Agent)",
+                                                fontSize = 11.sp,
+                                                color = CyanBright
+                                            )
+                                        }
+                                    }
+
+                                    Surface(
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = EmeraldSuccess.copy(alpha = 0.2f),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, EmeraldSuccess)
+                                    ) {
+                                        Text(
+                                            text = "v1.2.0 K DISPOZICI",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = EmeraldBright,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Text(
+                                    text = "Nainstalovaná aplikace nabízí aktualizaci na v1.2.0 s oficiálním přihlášením Google OAuth 2.0 bez přednastavených účtů a přímým napojením YouTube kanálu na AI model.",
+                                    fontSize = 11.sp,
+                                    color = Slate300,
+                                    lineHeight = 16.sp
+                                )
+
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Button(
+                                        onClick = { viewModel.forceOfferUpdate() },
+                                        colors = ButtonDefaults.buttonColors(containerColor = CyanBright, contentColor = Slate950),
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Instalovat v1.2.0", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    }
+
+                                    OutlinedButton(
+                                        onClick = { viewModel.checkForUpdates() },
+                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Slate200),
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Ověřit update", fontSize = 12.sp)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     // Hlavní karta správce pluginů
                     item {
                         Card(

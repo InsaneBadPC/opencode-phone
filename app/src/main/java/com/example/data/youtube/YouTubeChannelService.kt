@@ -45,14 +45,7 @@ class YouTubeChannelService(
                 }
             }
 
-            // 2. Attempt YouTube oEmbed API (reliable, JSON-based, minimal data)
-            val oembedResult = fetchFromOembedApi(cleanQuery, authType, userEmail)
-            if (oembedResult.isSuccess) {
-                val oembed = oembedResult.getOrThrow()
-                return@withContext Result.success(oembed)
-            }
-
-            // 3. Attempt real public scraping directly from YouTube for the channel handle/id
+            // 2. Attempt real public scraping directly from YouTube for the channel handle/id
             val scrapedResult = scrapePublicYouTubeChannel(cleanQuery, authType, userEmail)
             if (scrapedResult.isSuccess) {
                 val scraped = scrapedResult.getOrThrow()
@@ -112,61 +105,6 @@ class YouTubeChannelService(
         return@withContext emptyList()
     }
 
-
-    private fun fetchFromOembedApi(
-        query: String,
-        authType: YouTubeAuthType,
-        userEmail: String?
-    ): Result<YouTubeChannelAccount> {
-        return try {
-            val handle = when {
-                query.startsWith("@") -> query
-                query.startsWith("UC") && query.length >= 22 -> query
-                else -> "@$query"
-            }
-            val channelUrl = "https://www.youtube.com/$handle"
-            val oembedUrl = "https://www.youtube.com/oembed?url=${channelUrl}&format=json"
-            val request = Request.Builder()
-                .url(oembedUrl)
-                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36")
-                .header("Accept", "application/json")
-                .build()
-            val response = client.newCall(request).execute()
-            if (!response.isSuccessful) {
-                return Result.failure(Exception("oEmbed HTTP ${response.code}"))
-            }
-            val body = response.body?.string() ?: return Result.failure(Exception("Empty oEmbed body"))
-            val json = JSONObject(body)
-            val title = json.optString("title", "")
-            val authorUrl = json.optString("author_url", "")
-            val thumbnailUrl = json.optString("thumbnail_url", "")
-            val customUrl = if (authorUrl.isNotBlank()) authorUrl else "https://youtube.com/$handle"
-            val extractedHandle = if (authorUrl.contains("/@")) {
-                authorUrl.substringAfterLast("/@").let { "@$it" }
-            } else {
-                handle
-            }
-
-            Result.success(
-                YouTubeChannelAccount(
-                    channelId = "oembed_$handle",
-                    handle = extractedHandle,
-                    title = title.ifBlank { handle.removePrefix("@").replace("_", " ").trim() },
-                    description = "Kanál připojen přes YouTube oEmbed API.",
-                    customUrl = customUrl,
-                    avatarUrl = thumbnailUrl,
-                    subscriberCount = 0L,
-                    videoCount = 0,
-                    viewCount = 0L,
-                    authType = authType,
-                    channelEmail = userEmail,
-                    isVerified = false
-                )
-            )
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
     private fun scrapePublicYouTubeChannel(
         query: String,
         authType: YouTubeAuthType,
@@ -182,7 +120,7 @@ class YouTubeChannelService(
 
             val request = Request.Builder()
                 .url(targetUrl)
-                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36")
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
                 .header("Accept-Language", "cs,en;q=0.9")
                 .build()
 
@@ -514,5 +452,124 @@ class YouTubeChannelService(
             suggestedThumbConcept = suggestedThumbConcept,
             estimatedCtrBoost = boost
         )
+    }
+
+    /**
+     * Resolves authenticated YouTube channel using official Google OAuth 2.0 Bearer token.
+     */
+    suspend fun resolveChannelWithOAuth(
+        accessToken: String,
+        userEmail: String? = null
+    ): Result<YouTubeChannelAccount> = withContext(Dispatchers.IO) {
+        try {
+            val url = "https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics,brandingSettings&mine=true"
+            val request = Request.Builder()
+                .url(url)
+                .addHeader("Authorization", "Bearer ${accessToken.trim()}")
+                .build()
+
+            val response = client.newCall(request).execute()
+            if (!response.isSuccessful) {
+                return@withContext Result.failure(Exception("Google OAuth YouTube API HTTP ${response.code}"))
+            }
+
+            val body = response.body?.string().orEmpty()
+            val json = JSONObject(body)
+            val items = json.optJSONArray("items")
+            if (items == null || items.length() == 0) {
+                return@withContext Result.failure(Exception("K tomuto Google účtu nebyl nalezen žádný aktivní YouTube kanál."))
+            }
+
+            val item = items.getJSONObject(0)
+            val id = item.getString("id")
+            val snippet = item.getJSONObject("snippet")
+            val stats = item.getJSONObject("statistics")
+
+            val title = unescapeXml(snippet.getString("title"))
+            val desc = snippet.optString("description", "")
+            val customUrl = snippet.optString("customUrl", "@${title.lowercase().replace(" ", "")}")
+            val avatar = snippet.optJSONObject("thumbnails")?.optJSONObject("default")?.optString("url")
+                ?: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=200&auto=format&fit=crop&q=80"
+            val subs = stats.optString("subscriberCount", "0").toLongOrNull() ?: 0L
+            val vids = stats.optString("videoCount", "0").toIntOrNull() ?: 0
+            val views = stats.optString("viewCount", "0").toLongOrNull() ?: 0L
+
+            Result.success(
+                YouTubeChannelAccount(
+                    channelId = id,
+                    handle = customUrl,
+                    title = title,
+                    description = desc,
+                    customUrl = "https://youtube.com/$customUrl",
+                    avatarUrl = avatar,
+                    subscriberCount = subs,
+                    videoCount = vids,
+                    viewCount = views,
+                    authType = YouTubeAuthType.GOOGLE_OAUTH,
+                    channelEmail = userEmail
+                )
+            )
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Fetches authenticated user's uploaded videos and shorts using Google OAuth 2.0 Bearer token.
+     */
+    suspend fun fetchChannelVideosWithOAuth(
+        accessToken: String
+    ): List<YouTubeVideoItem> = withContext(Dispatchers.IO) {
+        try {
+            val url = "https://www.googleapis.com/youtube/v3/search?part=snippet&forMine=true&maxResults=25&order=date&type=video"
+            val request = Request.Builder()
+                .url(url)
+                .addHeader("Authorization", "Bearer ${accessToken.trim()}")
+                .build()
+
+            val response = client.newCall(request).execute()
+            if (!response.isSuccessful) return@withContext emptyList()
+
+            val body = response.body?.string().orEmpty()
+            val json = JSONObject(body)
+            val items = json.optJSONArray("items") ?: return@withContext emptyList()
+
+            val list = mutableListOf<YouTubeVideoItem>()
+            for (i in 0 until items.length()) {
+                val item = items.getJSONObject(i)
+                val idObj = item.getJSONObject("id")
+                val vidId = idObj.optString("videoId", "vid_$i")
+                val snippet = item.getJSONObject("snippet")
+                val title = unescapeXml(snippet.getString("title"))
+                val desc = snippet.optString("description", "")
+                val publishedAt = snippet.optString("publishedAt", "Nedávno")
+                val thumb = snippet.optJSONObject("thumbnails")?.optJSONObject("medium")?.optString("url")
+                    ?: "https://img.youtube.com/vi/$vidId/hqdefault.jpg"
+
+                list.add(
+                    YouTubeVideoItem(
+                        id = vidId,
+                        title = title,
+                        description = desc,
+                        publishedAt = publishedAt.take(10),
+                        thumbnailUrl = thumb,
+                        duration = "12:00",
+                        isShort = title.contains("#shorts", ignoreCase = true),
+                        viewCount = 0L,
+                        likeCount = 0L,
+                        commentCount = 0L,
+                        ctrPercent = 6.4f,
+                        avgRetentionPercent = 58.0f,
+                        tags = listOf("youtube", "google-oauth"),
+                        privacyStatus = "public",
+                        aiHealthScore = 88,
+                        optimizationTips = listOf("Oficiálně synchronizováno přes Google OAuth 2.0.")
+                    )
+                )
+            }
+            list
+        } catch (_: Exception) {
+            emptyList()
+        }
     }
 }

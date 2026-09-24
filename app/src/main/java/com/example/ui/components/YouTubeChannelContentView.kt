@@ -62,6 +62,7 @@ fun YouTubeChannelContentView(
     var showAddVideoDialog by remember { mutableStateOf(false) }
     var showEditChannelDialog by remember { mutableStateOf(false) }
     var showSwitchAccountDialog by remember { mutableStateOf(false) }
+    var showGoogleOAuthDialog by remember { mutableStateOf(false) }
     var selectedFilter by remember { mutableStateOf(VideoFilterCategory.ALL) }
 
     val youtubeRed = Color(0xFFFF0033)
@@ -84,21 +85,26 @@ fun YouTubeChannelContentView(
             .testTag("youtube_channel_content_view")
     ) {
         if (connectedChannel == null) {
-            // NOT CONNECTED STATE: Allows entering ANY Google account & YouTube handle
+            // NOT CONNECTED STATE: Clean slate with official Google OAuth 2.0 as primary action
             NotConnectedOnboardingCard(
                 currentGoogleAccount = currentGoogleAccount,
-                connectionError = connectionError,
+                onGoogleOAuthClick = { showGoogleOAuthDialog = true },
                 onConnectClick = { showConnectDialog = true },
                 onDirectConnect = { email, handle ->
-                    val cleanEmail = email.trim().ifBlank { "insanebad2@gmail.com" }
-                    val finalQuery = handle.trim().ifBlank { "@" + cleanEmail.substringBefore("@") }
-                    viewModel.setGoogleAccount(cleanEmail)
+                    val cleanEmail = email.trim()
+                    val cleanHandle = handle.trim()
+                    val finalQuery = cleanHandle.ifBlank {
+                        if (cleanEmail.isNotBlank()) "@" + cleanEmail.substringBefore("@") else "@muj_kanal"
+                    }
+                    if (cleanEmail.isNotBlank()) {
+                        viewModel.setGoogleAccount(cleanEmail)
+                    }
                     viewModel.connectYouTubeChannel(
                         query = finalQuery,
                         authType = YouTubeAuthType.GOOGLE_OAUTH,
-                        userEmail = cleanEmail
+                        userEmail = cleanEmail.ifBlank { null }
                     )
-                    Toast.makeText(context, "Připojuji YouTube kanál pro $cleanEmail...", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Připojuji YouTube kanál...", Toast.LENGTH_SHORT).show()
                 },
                 onAccountChange = { newEmail ->
                     viewModel.setGoogleAccount(newEmail)
@@ -505,6 +511,22 @@ fun YouTubeChannelContentView(
         )
     }
 
+    // GOOGLE OAUTH 2.0 DIALOG
+    if (showGoogleOAuthDialog) {
+        GoogleOAuthDialog(
+            projectId = "gen-lang-client-0025970914",
+            onDismiss = { showGoogleOAuthDialog = false },
+            onAuthorize = { token, email ->
+                showGoogleOAuthDialog = false
+                viewModel.connectYouTubeChannelWithOAuth(
+                    accessToken = token,
+                    userEmail = email.ifBlank { null }
+                )
+                Toast.makeText(context, "Ověřuji Google OAuth 2.0 a stahuji data kanálu...", Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
+
     // AI VIDEO AUDIT DETAIL DIALOG
     if (selectedVideoForAudit != null) {
         val video = selectedVideoForAudit!!
@@ -524,7 +546,7 @@ fun YouTubeChannelContentView(
 @Composable
 private fun NotConnectedOnboardingCard(
     currentGoogleAccount: String,
-    connectionError: String? = null,
+    onGoogleOAuthClick: () -> Unit,
     onConnectClick: () -> Unit,
     onDirectConnect: (email: String, handle: String) -> Unit,
     onAccountChange: (String) -> Unit
@@ -571,23 +593,81 @@ private fun NotConnectedOnboardingCard(
             Spacer(modifier = Modifier.height(6.dp))
 
             Text(
-                text = "Kanál bude spárován s vaším Google účtem. Zadejte váš @handle, odkaz na kanál nebo ID a aplikace načte vaše skutečná videa pro AI audit.",
+                text = "Oficiální propojení YouTube agenta s vaším Google účtem. Načte skutečná data, videa a statistiky pro AI audit.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = Slate400,
                 textAlign = TextAlign.Center
             )
 
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // 1. PRIMARY ACTION: Official Google Sign-In with OAuth 2.0
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = Color.White,
+                shadowElevation = 3.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onGoogleOAuthClick() }
+                    .testTag("btn_google_oauth_signin")
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 13.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(24.dp)
+                            .background(Color(0xFFEA4335), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("G", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column {
+                        Text(
+                            text = "Přihlásit se přes Google (OAuth 2.0)",
+                            color = Color(0xFF1F1F1F),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp
+                        )
+                        Text(
+                            text = "Google Cloud: gen-lang-client-0025970914 • YouAgent",
+                            color = Color(0xFF757575),
+                            fontSize = 10.sp
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                HorizontalDivider(modifier = Modifier.weight(1f), color = Slate800)
+                Text(
+                    text = "  NEBO ZADAT MANUÁLNĚ  ",
+                    fontSize = 10.sp,
+                    color = Slate500,
+                    fontWeight = FontWeight.Bold
+                )
+                HorizontalDivider(modifier = Modifier.weight(1f), color = Slate800)
+            }
+
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Editable Google Account field
+            // Google Account field (clean slate without prefilled preset)
             OutlinedTextField(
                 value = emailInput,
                 onValueChange = {
                     emailInput = it
                     onAccountChange(it)
                 },
-                label = { Text("Váš Google účet / E-mail") },
-                placeholder = { Text("insanebad2@gmail.com") },
+                label = { Text("Váš Google e-mail") },
+                placeholder = { Text("např. vas-email@gmail.com") },
                 leadingIcon = {
                     Icon(Icons.Default.AccountCircle, contentDescription = null, tint = CyanBright)
                 },
@@ -605,8 +685,8 @@ private fun NotConnectedOnboardingCard(
             OutlinedTextField(
                 value = handleInput,
                 onValueChange = { handleInput = it },
-                label = { Text("YouTube @handle, odkaz na kanál nebo ID") },
-                placeholder = { Text("@" + emailInput.substringBefore("@").ifBlank { "insanebad2" }) },
+                label = { Text("YouTube @handle, link na kanál nebo ID") },
+                placeholder = { Text("např. @muj_kanal nebo odkaz") },
                 leadingIcon = {
                     Icon(Icons.Default.Link, contentDescription = null, tint = youtubeRed)
                 },
@@ -624,14 +704,15 @@ private fun NotConnectedOnboardingCard(
                 onClick = {
                     onDirectConnect(emailInput, handleInput)
                 },
+                enabled = emailInput.isNotBlank() || handleInput.isNotBlank(),
                 colors = ButtonDefaults.buttonColors(containerColor = youtubeRed),
                 shape = RoundedCornerShape(10.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Icon(Icons.Default.Login, contentDescription = null, modifier = Modifier.size(18.dp))
+                Icon(Icons.Default.Link, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "🚀 Připojit kanál pro $emailInput",
+                    text = "Připojit kanál",
                     fontWeight = FontWeight.Bold,
                     fontSize = 13.sp
                 )
@@ -646,31 +727,6 @@ private fun NotConnectedOnboardingCard(
                 Icon(Icons.Default.Settings, contentDescription = null, tint = Slate400, modifier = Modifier.size(14.dp))
                 Spacer(modifier = Modifier.width(4.dp))
                 Text("Pokročilé nastavení (API klíč, kategorie, vlastní název)", fontSize = 11.sp, color = Slate400)
-            }
-
-            // Error display — shown when channel connection fails
-            if (!connectionError.isNullOrBlank()) {
-                Spacer(modifier = Modifier.height(10.dp))
-                Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = Color(0xFFFF0033).copy(alpha = 0.1f),
-                    border = BorderStroke(1.dp, Color(0xFFFF0033))
-                ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFFF6B6B), modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Nepodařilo se připojit kanál", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFF6B6B))
-                        }
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(connectionError!!, fontSize = 11.sp, color = Slate300, lineHeight = 16.sp)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text("Tipy:", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = AmberWarning)
-                        Text("• Zkontrolujte @handle (bez mezer, s @)", fontSize = 10.sp, color = Slate400, lineHeight = 14.sp)
-                        Text("• Zkuste Google OAuth v nastavení", fontSize = 10.sp, color = Slate400, lineHeight = 14.sp)
-                        Text("• YouTube blokuje scraping - použijte Data API v3 klíč", fontSize = 10.sp, color = Slate400, lineHeight = 14.sp)
-                    }
-                }
             }
         }
     }
@@ -1023,7 +1079,7 @@ private fun ConnectChannelDialog(
                     value = channelHandleInput,
                     onValueChange = { channelHandleInput = it },
                     label = { Text("YouTube @handle, link nebo ID kanálu *") },
-                    placeholder = { Text("@" + googleEmailInput.substringBefore("@").ifBlank { "insanebad2" }) },
+                    placeholder = { Text("@" + googleEmailInput.substringBefore("@").ifBlank { "muj_kanal" }) },
                     leadingIcon = {
                         Icon(Icons.Default.Link, contentDescription = null, tint = youtubeRed)
                     },

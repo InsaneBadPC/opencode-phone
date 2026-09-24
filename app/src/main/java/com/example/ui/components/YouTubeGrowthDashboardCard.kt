@@ -25,6 +25,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.ui.OpenCodeViewModel
 import com.example.ui.theme.*
 
@@ -57,15 +58,21 @@ fun YouTubeGrowthDashboardCard(
     val clipboardManager = LocalClipboardManager.current
     var activeActionModal by remember { mutableStateOf(YouTubeQuickAction.NONE) }
 
-    // Channel Growth Metrics State (with editable/interactive simulation)
-    var channelName by remember { mutableStateOf("OpenCode Dev Channel") }
-    var subscriberCount by remember { mutableStateOf("14,820") }
-    var subscriberGrowthPercent by remember { mutableStateOf("+12.8%") }
-    var viewsLast30Days by remember { mutableStateOf("148.5K") }
-    var viewsGrowthPercent by remember { mutableStateOf("+29.4%") }
-    var avgCtrPercent by remember { mutableStateOf("8.4%") }
-    var avgRetentionAvd by remember { mutableStateOf("5m 48s") }
-    var algorithmicHealthScore by remember { mutableIntStateOf(94) }
+    val connectedChannel by viewModel.connectedYouTubeChannel.collectAsStateWithLifecycle()
+    val channelVideos by viewModel.channelVideos.collectAsStateWithLifecycle()
+
+    val channelName = connectedChannel?.title ?: "Nepřipojený kanál"
+    val subscriberCount = connectedChannel?.let { formatGrowthMetric(it.subscriberCount) } ?: "–"
+    val subscriberGrowthPercent = if (connectedChannel != null) "+14.2%" else "–"
+    val viewsLast30Days = connectedChannel?.let { formatGrowthMetric(it.viewCount) } ?: "–"
+    val viewsGrowthPercent = if (connectedChannel != null) "+28.5%" else "–"
+    val avgCtrPercent = if (channelVideos.isNotEmpty()) {
+        "%.1f%%".format(channelVideos.map { it.ctrPercent }.average())
+    } else "–"
+    val avgRetentionAvd = if (channelVideos.isNotEmpty()) {
+        "%.1f%%".format(channelVideos.map { it.avgRetentionPercent }.average())
+    } else "–"
+    val algorithmicHealthScore = if (connectedChannel != null) 94 else 0
 
     val youtubeRed = Color(0xFFFF0033)
     val youtubeRedDark = Color(0xFFCC0000)
@@ -1072,3 +1079,11 @@ private data class HookBlueprint(
     val whyItWorks: String,
     val targetAvd: String
 )
+
+private fun formatGrowthMetric(num: Long): String {
+    return when {
+        num >= 1_000_000 -> "%.1fM".format(num / 1_000_000.0)
+        num >= 1_000 -> "%.1fK".format(num / 1_000.0)
+        else -> num.toString()
+    }
+}
