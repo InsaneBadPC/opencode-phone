@@ -54,6 +54,20 @@ fun UpdateDialog(
             ReadyToInstallDialogContent(
                 release = state.release,
                 onInstallAgain = { viewModel.launchInstaller(state.apkFile) },
+                onOpenGitHub = { viewModel.openGitHubReleaseUrl(state.release.htmlUrl) },
+                onDismiss = { viewModel.dismissUpdate() }
+            )
+        }
+        is UpdateCheckState.Checking -> {
+            CheckingDialogContent(
+                onDismiss = { viewModel.dismissUpdate() }
+            )
+        }
+        is UpdateCheckState.UpToDate -> {
+            UpToDateDialogContent(
+                version = state.currentVersion,
+                onTestUpdate = { viewModel.forceOfferUpdate() },
+                onOpenGitHub = { viewModel.openGitHubReleases() },
                 onDismiss = { viewModel.dismissUpdate() }
             )
         }
@@ -64,8 +78,8 @@ fun UpdateDialog(
                 onDismiss = { viewModel.dismissUpdate() }
             )
         }
-        else -> {
-            // Idle or Checking - handled unobtrusively
+        is UpdateCheckState.Idle -> {
+            // Nothing to display
         }
     }
 }
@@ -314,6 +328,7 @@ private fun DownloadingDialogContent(
 private fun ReadyToInstallDialogContent(
     release: AppReleaseInfo,
     onInstallAgain: () -> Unit,
+    onOpenGitHub: () -> Unit,
     onDismiss: () -> Unit
 ) {
     Dialog(onDismissRequest = onDismiss) {
@@ -322,39 +337,79 @@ private fun ReadyToInstallDialogContent(
             color = Slate900,
             border = androidx.compose.foundation.BorderStroke(1.dp, EmeraldSuccess),
             modifier = Modifier
-                .fillMaxWidth(0.9f)
+                .fillMaxWidth(0.92f)
                 .padding(16.dp)
         ) {
             Column(
-                modifier = Modifier.padding(20.dp),
+                modifier = Modifier
+                    .padding(20.dp)
+                    .verticalScroll(rememberScrollState()),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Icon(
                     Icons.Default.CheckCircle,
                     contentDescription = null,
                     tint = EmeraldBright,
-                    modifier = Modifier.size(48.dp)
+                    modifier = Modifier.size(44.dp)
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Text(
+                    text = "Instalační balíček připraven",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp,
+                    color = Slate100
+                )
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Text(
+                    text = "Verze ${release.tagName} byla stažena do paměti zařízení.",
+                    fontSize = 11.sp,
+                    color = Slate400,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
                 )
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                Text(
-                    text = "Aktualizace stažena",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp,
-                    color = Slate100
-                )
+                // Signature Conflict Guide Card
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = AmberWarning.copy(alpha = 0.12f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, AmberWarning.copy(alpha = 0.5f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.WarningAmber,
+                                contentDescription = null,
+                                tint = AmberWarning,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Hlásí Android konflikt balíčků?",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = AmberWarning
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "Chyba 'Balíček je v konfliktu se stávajícím balíčkem' vzniká, když má nová verze jiný podpisový certifikát (Keystore) než aktuálně nainstalovaná aplikace.\n\n" +
+                                    "Řešení ve 2 krocích:\n" +
+                                    "1. Původní aplikaci odinstalujte z telefonu (dlouhý stisk ikony -> Odinstalovat).\n" +
+                                    "2. Klikněte níže na 'Spustit instalaci' nebo nainstalujte APK z GitHubu.",
+                            fontSize = 10.sp,
+                            color = Slate200,
+                            lineHeight = 14.sp
+                        )
+                    }
+                }
 
-                Spacer(modifier = Modifier.height(6.dp))
-
-                Text(
-                    text = "Spuštěn nativní instalátor balíčků Android pro verzi ${release.tagName}.",
-                    fontSize = 11.sp,
-                    color = Slate300,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
                 Button(
                     onClick = onInstallAgain,
@@ -362,7 +417,22 @@ private fun ReadyToInstallDialogContent(
                     shape = RoundedCornerShape(8.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Spustit instalátor znovu", fontWeight = FontWeight.Bold)
+                    Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Spustit instalaci APK", fontWeight = FontWeight.Bold)
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                OutlinedButton(
+                    onClick = onOpenGitHub,
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = CyanBright),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.OpenInBrowser, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Otevřít vydání na GitHubu", fontSize = 11.sp)
                 }
 
                 Spacer(modifier = Modifier.height(6.dp))
@@ -400,4 +470,153 @@ private fun UpdateErrorDialogContent(
         },
         containerColor = Slate900
     )
+}
+
+@Composable
+private fun CheckingDialogContent(
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    color = CyanBright,
+                    strokeWidth = 2.dp
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Text("Kontrola aktualizací", color = Slate100, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            }
+        },
+        text = {
+            Text(
+                "Ověřuji nejnovější vydání v repozitáři InsaneBadPC/opencode-phone na GitHubu...",
+                color = Slate300,
+                fontSize = 12.sp
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Zrušit", color = Slate400)
+            }
+        },
+        containerColor = Slate900
+    )
+}
+
+@Composable
+private fun UpToDateDialogContent(
+    version: String,
+    onTestUpdate: () -> Unit,
+    onOpenGitHub: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = Slate900,
+            border = androidx.compose.foundation.BorderStroke(1.dp, EmeraldSuccess.copy(alpha = 0.5f)),
+            modifier = Modifier
+                .fillMaxWidth(0.92f)
+                .padding(16.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(52.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(EmeraldSuccess.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CheckCircle,
+                        contentDescription = null,
+                        tint = EmeraldBright,
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Text(
+                    text = "Aplikace je aktuální",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = Slate100
+                )
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = EmeraldSuccess.copy(alpha = 0.2f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, EmeraldSuccess.copy(alpha = 0.6f))
+                ) {
+                    Text(
+                        text = "v$version • Nejnovější verze",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace,
+                        color = EmeraldBright,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Text(
+                    text = "Máte nainstalovanou nejnovější dostupnou verzi OpenCode. Žádné novější aktualizace nebyly na GitHubu nalezeny.",
+                    fontSize = 12.sp,
+                    color = Slate300,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    lineHeight = 16.sp
+                )
+
+                Spacer(modifier = Modifier.height(18.dp))
+
+                Button(
+                    onClick = onDismiss,
+                    colors = ButtonDefaults.buttonColors(containerColor = CyanBright, contentColor = Slate950),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Rozumím", fontWeight = FontWeight.Bold)
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = onTestUpdate,
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Slate300),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Slate700),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Vynutit dialog", fontSize = 11.sp)
+                    }
+
+                    OutlinedButton(
+                        onClick = onOpenGitHub,
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Slate300),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Slate700),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Releases", fontSize = 11.sp)
+                    }
+                }
+            }
+        }
+    }
 }

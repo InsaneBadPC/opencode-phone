@@ -88,13 +88,15 @@ fun YouTubeChannelContentView(
             // NOT CONNECTED STATE: Clean slate with official Google OAuth 2.0 as primary action
             NotConnectedOnboardingCard(
                 currentGoogleAccount = currentGoogleAccount,
+                connectionError = connectionError,
+                isConnecting = isConnecting,
                 onGoogleOAuthClick = { showGoogleOAuthDialog = true },
                 onConnectClick = { showConnectDialog = true },
                 onDirectConnect = { email, handle ->
                     val cleanEmail = email.trim()
                     val cleanHandle = handle.trim()
                     val finalQuery = cleanHandle.ifBlank {
-                        if (cleanEmail.isNotBlank()) "@" + cleanEmail.substringBefore("@") else "@muj_kanal"
+                        if (cleanEmail.isNotBlank()) "@" + cleanEmail.substringBefore("@").replace(".", "_") else "@p_p_lukes892"
                     }
                     if (cleanEmail.isNotBlank()) {
                         viewModel.setGoogleAccount(cleanEmail)
@@ -546,13 +548,16 @@ fun YouTubeChannelContentView(
 @Composable
 private fun NotConnectedOnboardingCard(
     currentGoogleAccount: String,
+    connectionError: String? = null,
+    isConnecting: Boolean = false,
     onGoogleOAuthClick: () -> Unit,
     onConnectClick: () -> Unit,
     onDirectConnect: (email: String, handle: String) -> Unit,
     onAccountChange: (String) -> Unit
 ) {
     val youtubeRed = Color(0xFFFF0033)
-    var emailInput by remember(currentGoogleAccount) { mutableStateOf(currentGoogleAccount) }
+    val defaultEmail = currentGoogleAccount.ifBlank { "p.p.lukes892@gmail.com" }
+    var emailInput by remember(currentGoogleAccount) { mutableStateOf(defaultEmail) }
     var handleInput by remember { mutableStateOf("") }
 
     Card(
@@ -600,6 +605,56 @@ private fun NotConnectedOnboardingCard(
             )
 
             Spacer(modifier = Modifier.height(20.dp))
+
+            if (connectionError != null) {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0xFFEA4335).copy(alpha = 0.15f),
+                    border = BorderStroke(1.dp, Color(0xFFEA4335).copy(alpha = 0.4f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(modifier = Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.ErrorOutline, contentDescription = null, tint = Color(0xFFEA4335), modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(text = connectionError, fontSize = 11.sp, color = Color(0xFFFF8A80))
+                    }
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+
+            // Quick 1-tap connect card for detected Google account
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = Slate800,
+                border = BorderStroke(1.dp, CyanBright.copy(alpha = 0.4f)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(enabled = !isConnecting) {
+                        onDirectConnect(defaultEmail, handleInput)
+                    }
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .background(Color(0xFFEA4335), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("G", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Rychlé přihlášení: $defaultEmail", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Slate100)
+                        Text("1 kliknutí • Připojí váš YouTube kanál bez externího přesměrování", fontSize = 10.sp, color = CyanBright)
+                    }
+                    Icon(Icons.Default.ArrowForward, contentDescription = null, tint = CyanBright, modifier = Modifier.size(14.dp))
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
 
             // 1. PRIMARY ACTION: Official Google Sign-In with OAuth 2.0
             Surface(
@@ -704,18 +759,24 @@ private fun NotConnectedOnboardingCard(
                 onClick = {
                     onDirectConnect(emailInput, handleInput)
                 },
-                enabled = emailInput.isNotBlank() || handleInput.isNotBlank(),
+                enabled = !isConnecting && (emailInput.isNotBlank() || handleInput.isNotBlank()),
                 colors = ButtonDefaults.buttonColors(containerColor = youtubeRed),
                 shape = RoundedCornerShape(10.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Icon(Icons.Default.Link, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "Připojit kanál",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 13.sp
-                )
+                if (isConnecting) {
+                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Připojuji YouTube...", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                } else {
+                    Icon(Icons.Default.Link, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Připojit kanál",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(8.dp))

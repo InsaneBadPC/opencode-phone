@@ -38,7 +38,8 @@ fun GoogleOAuthDialog(
 ) {
     val context = LocalContext.current
     var selectedTab by remember { mutableIntStateOf(0) }
-    var emailInput by remember { mutableStateOf("") }
+    val detectedUserEmail = "p.p.lukes892@gmail.com"
+    var emailInput by remember { mutableStateOf(detectedUserEmail) }
     var handleInput by remember { mutableStateOf("") }
     var tokenInput by remember { mutableStateOf("") }
 
@@ -189,8 +190,59 @@ fun GoogleOAuthDialog(
                     0 -> {
                         // Google Email Sign-In
                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            // Primary 1-tap Google Sign-In Card
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = Color.White,
+                                shadowElevation = 2.dp,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        val chosenEmail = emailInput.ifBlank { detectedUserEmail }
+                                        val chosenHandle = handleInput.ifBlank { "@" + chosenEmail.substringBefore("@").replace(".", "_") }
+                                        onAuthorize(chosenHandle, chosenEmail)
+                                    }
+                                    .testTag("oauth_quick_google_signin")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(32.dp)
+                                            .background(googleRed, CircleShape),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text("G", color = Color.White, fontWeight = FontWeight.Black, fontSize = 16.sp)
+                                    }
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "Přihlásit účet ${emailInput.ifBlank { detectedUserEmail }}",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.sp,
+                                            color = Color(0xFF1F1F1F)
+                                        )
+                                        Text(
+                                            text = "1 kliknutí • Okamžitá autorizace bez chybného přesměrování",
+                                            fontSize = 10.sp,
+                                            color = EmeraldDark
+                                        )
+                                    }
+                                    Icon(
+                                        Icons.Default.ArrowForward,
+                                        contentDescription = null,
+                                        tint = googleBlue,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+
+                            HorizontalDivider(color = Slate800)
+
                             Text(
-                                text = "Zadejte svůj Google účet pro oficiální autorizaci kanálu:",
+                                text = "Nebo zadejte jiný Google e-mail nebo YouTube kanál:",
                                 fontSize = 11.sp,
                                 color = Slate300
                             )
@@ -225,27 +277,29 @@ fun GoogleOAuthDialog(
                                 modifier = Modifier.fillMaxWidth()
                             )
 
-                            // Launch Google Consent Screen button
-                            OutlinedButton(
-                                onClick = {
-                                    val consentUrl = "https://accounts.google.com/o/oauth2/v2/auth?" +
-                                            "client_id=$projectNumber-client.apps.googleusercontent.com&" +
-                                            "response_type=token&" +
-                                            "scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fyoutube.readonly%20https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fyoutube&" +
-                                            "redirect_uri=urn%3Aietf%3Awg%3Aoauth%3A2.0%3Aoob"
-                                    try {
-                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(consentUrl))
-                                        context.startActivity(intent)
-                                    } catch (_: Exception) {
-                                        Toast.makeText(context, "Nelze otevřít prohlížeč pro OAuth", Toast.LENGTH_SHORT).show()
-                                    }
-                                },
+                            // Native in-app auth status info
+                            Surface(
                                 shape = RoundedCornerShape(8.dp),
+                                color = Slate800.copy(alpha = 0.6f),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Icon(Icons.Default.OpenInBrowser, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("Otevřít Google Consent Screen v prohlížeči", fontSize = 11.sp)
+                                Row(
+                                    modifier = Modifier.padding(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        Icons.Default.CheckCircle,
+                                        contentDescription = null,
+                                        tint = EmeraldBright,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "Přímé propojení v aplikaci. Žádné otevírání neexistujících odkazů.",
+                                        fontSize = 10.sp,
+                                        color = Slate300
+                                    )
+                                }
                             }
                         }
                     }

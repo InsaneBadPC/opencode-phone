@@ -1503,7 +1503,7 @@ private fun InfoRow(label: String, value: String, isMonospace: Boolean = false) 
 
 // --- TREE BUILDING & FLATTENING UTILITIES ---
 
-private fun buildFileTree(files: List<WorkspaceFileEntity>): FileTreeNode {
+fun buildFileTree(files: List<WorkspaceFileEntity>): FileTreeNode {
     val root = FileTreeNode(path = "", name = "root", isDirectory = true)
 
     files.forEach { file ->

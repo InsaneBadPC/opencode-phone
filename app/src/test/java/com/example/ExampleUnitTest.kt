@@ -21,14 +21,14 @@ class ExampleUnitTest {
         assertTrue("Groq must exist", providerIds.contains("groq"))
         assertTrue("OpenRouter must exist", providerIds.contains("openrouter"))
         assertTrue("GitHub Models must exist", providerIds.contains("github_models"))
-        assertTrue("Cerebras must exist", providerIds.contains("cerebras"))
-        assertTrue("Ollama must exist", providerIds.contains("ollama"))
+        assertTrue("HuggingFace must exist", providerIds.contains("huggingface"))
+        assertTrue("Ollama must exist", providerIds.contains("ollama_local"))
 
         // Default availability: Gemini (built-in) and Ollama (local/no key) are available immediately
         val gemini = providers.first { it.id == "google_gemini" }
         assertTrue("Gemini should be available by default", gemini.isAvailable)
 
-        val ollama = providers.first { it.id == "ollama" }
+        val ollama = providers.first { it.id == "ollama_local" }
         assertTrue("Ollama without key should be available", ollama.isAvailable)
 
         // Groq without key should NOT be available in model picker
@@ -76,7 +76,8 @@ class ExampleUnitTest {
             )
         )
 
-        val treeNodes = com.example.ui.components.buildFileTree(files)
+        val treeRoot = com.example.ui.components.buildFileTree(files)
+        val treeNodes = treeRoot.children
         assertTrue("Tree nodes should not be empty", treeNodes.isNotEmpty())
         
         // Root should have "app" folder and "README.md" file

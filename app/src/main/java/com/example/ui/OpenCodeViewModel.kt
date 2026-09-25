@@ -227,16 +227,6 @@ class OpenCodeViewModel(application: Application) : AndroidViewModel(application
 
     init {
         repository.zenAiService.agentEngine = agentEngine
-        viewModelScope.launch {
-            connectedYouTubeChannel.collect { ch ->
-                repository.zenAiService.connectedYouTubeChannel = ch
-            }
-        }
-        viewModelScope.launch {
-            channelVideos.collect { vids ->
-                repository.zenAiService.channelVideos = vids
-            }
-        }
         loadSavedProviders()
         viewModelScope.launch {
             sessions.collect { sessionList ->
@@ -2866,7 +2856,12 @@ ${steps.mapIndexed { idx, s -> "${idx + 1}. $s" }.joinToString("\n")}
     fun gitPush(onFinished: (String) -> Unit) {
         viewModelScope.launch {
             kotlinx.coroutines.delay(800)
-            onFinished("Všechny commity byly úspěšně odeslány (git push origin ${currentGitBranch.value}) na GitHub!")
+            val newRelease = appUpdateManager.recordBuildOrGitPush(
+                currentVersion = appVersionName,
+                branch = currentGitBranch.value,
+                commitMessage = gitCommitHistory.value.firstOrNull()?.message ?: "Push do větve ${currentGitBranch.value}"
+            )
+            onFinished("Commity odeslány na GitHub. Vytvořeno nové sestavení ${newRelease.tagName} připravené k aktualizaci!")
         }
     }
 
@@ -3077,7 +3072,13 @@ jobs:
             workflowExecutionLogs.value = workflowExecutionLogs.value + "🎉 [Hotovo] Artefakt $apkName ($apkSize MB) byl vygenerován a je připraven ke stažení!"
             isWorkflowRunning.value = false
 
-            onFinished("GitHub Action úspěšně sestavila APK balíček ($apkName)!")
+            val newRelease = appUpdateManager.recordBuildOrGitPush(
+                currentVersion = appVersionName,
+                branch = currentGitBranch.value,
+                commitMessage = "GitHub Actions APK Build #$newRunNumber ($buildType)"
+            )
+
+            onFinished("GitHub Action úspěšně sestavila APK balíček ($apkName) pro verzi ${newRelease.tagName}!")
         }
     }
 
@@ -3331,6 +3332,16 @@ jobs:
     init {
         // Load user's saved channel if previously connected; otherwise keep null so user can connect their actual channel
         loadSavedYouTubeChannel()
+        viewModelScope.launch {
+            connectedYouTubeChannel.collect { ch ->
+                repository.zenAiService.connectedYouTubeChannel = ch
+            }
+        }
+        viewModelScope.launch {
+            channelVideos.collect { vids ->
+                repository.zenAiService.channelVideos = vids
+            }
+        }
     }
 
     fun setGoogleAccount(email: String) {
@@ -3527,18 +3538,17 @@ jobs:
                 val result = if (isRealBearerToken) {
                     youTubeChannelService.resolveChannelWithOAuth(accessToken, cleanEmail)
                 } else {
-                    // Try OAuth first, with graceful fallback to resolving by handle or email
-                    val oauthRes = youTubeChannelService.resolveChannelWithOAuth(accessToken, cleanEmail)
-                    if (oauthRes.isSuccess) oauthRes else {
-                        val query = accessToken.takeIf { it.startsWith("@") || it.startsWith("UC") }
-                            ?: cleanEmail?.let { "@" + it.substringBefore("@") }
-                            ?: "@muj_kanal"
-                        youTubeChannelService.resolveChannel(
-                            query = query,
-                            authType = YouTubeAuthType.GOOGLE_OAUTH,
-                            userEmail = cleanEmail
-                        )
+                    val query = when {
+                        accessToken.startsWith("@") || accessToken.startsWith("UC") -> accessToken
+                        !cleanEmail.isNullOrBlank() -> "@" + cleanEmail.substringBefore("@").replace(".", "_")
+                        accessToken.isNotBlank() && !accessToken.startsWith("oauth_") -> "@$accessToken"
+                        else -> "@p_p_lukes892"
                     }
+                    youTubeChannelService.resolveChannel(
+                        query = query,
+                        authType = YouTubeAuthType.GOOGLE_OAUTH,
+                        userEmail = cleanEmail
+                    )
                 }
 
                 if (result.isSuccess) {

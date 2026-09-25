@@ -437,7 +437,7 @@ class OpenCodeAgentEngine(
     /**
      * Checks for updates.
      */
-    suspend fun checkAndPromptUpdate(currentVersion: String = "1.2.0"): AgentExecutionResult = withContext(Dispatchers.IO) {
+    suspend fun checkAndPromptUpdate(currentVersion: String = "1.2.2"): AgentExecutionResult = withContext(Dispatchers.IO) {
         val state = appUpdateManager.checkForUpdates(currentVersion)
         val out = when (state) {
             is com.example.data.update.UpdateCheckState.UpdateAvailable -> {
